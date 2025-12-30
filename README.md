@@ -1,7 +1,7 @@
 # Laravel Fun Lab
 
-[![Latest Version](https://img.shields.io/github/v/release/Particle-Academy/laravel-fun-labs?style=flat-square)](https://github.com/Particle-Academy/laravel-fun-labs/releases)
-[![License](https://img.shields.io/github/license/Particle-Academy/laravel-fun-labs?style=flat-square)](LICENSE)
+[![Latest Version](https://img.shields.io/packagist/v/particleacademy/laravel-fun-lab.svg?style=flat-square)](https://packagist.org/packages/particleacademy/laravel-fun-lab)
+[![License](https://img.shields.io/packagist/l/particleacademy/laravel-fun-lab.svg?style=flat-square)](https://packagist.org/packages/particleacademy/laravel-fun-lab)
 [![Laravel](https://img.shields.io/badge/Laravel-11.x%20%7C%2012.x-red.svg?style=flat-square)](https://laravel.com)
 
 > Analytics disguised as gamification — turn user activity into meaningful engagement insights.
