@@ -1,0 +1,195 @@
+<?php
+
+declare(strict_types=1);
+
+namespace LaravelFunLab;
+
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\ServiceProvider;
+use LaravelFunLab\Console\Commands\InstallCommand;
+use LaravelFunLab\Contracts\AnalyticsServiceContract;
+use LaravelFunLab\Contracts\AwardEngineContract;
+use LaravelFunLab\Contracts\LeaderboardServiceContract;
+use LaravelFunLab\Listeners\EventLogSubscriber;
+use LaravelFunLab\Registries\AwardTypeRegistry;
+use LaravelFunLab\Services\AwardEngine;
+
+/**
+ * Laravel Fun Lab Service Provider
+ *
+ * Bootstraps the LFL package by registering services, loading configuration,
+ * migrations, routes, and views. Provides the foundation for the gamification layer.
+ */
+class LFLServiceProvider extends ServiceProvider
+{
+    /**
+     * Register package services and bindings.
+     */
+    public function register(): void
+    {
+        // Merge the package config with application config
+        $this->mergeConfigFrom(
+            __DIR__.'/../config/lfl.php',
+            'lfl'
+        );
+
+        $this->registerServiceBindings();
+    }
+
+    /**
+     * Register swappable service bindings.
+     *
+     * Allows developers to swap implementations via config or service provider.
+     */
+    protected function registerServiceBindings(): void
+    {
+        // Register AwardEngine with contract binding
+        $awardEngineClass = config('lfl.services.award_engine', AwardEngine::class);
+        $this->app->singleton(AwardEngineContract::class, function ($app) use ($awardEngineClass) {
+            return $app->make($awardEngineClass);
+        });
+
+        // Register the AwardEngine as a singleton for facade access (using contract)
+        $this->app->singleton('lfl', function ($app) {
+            return $app->make(AwardEngineContract::class);
+        });
+
+        // Register LeaderboardBuilder with contract binding
+        $leaderboardClass = config('lfl.services.leaderboard', \LaravelFunLab\Builders\LeaderboardBuilder::class);
+        $this->app->bind(LeaderboardServiceContract::class, function ($app) use ($leaderboardClass) {
+            return $app->make($leaderboardClass);
+        });
+
+        // Register AnalyticsBuilder with contract binding
+        $analyticsClass = config('lfl.services.analytics', \LaravelFunLab\Builders\AnalyticsBuilder::class);
+        $this->app->bind(AnalyticsServiceContract::class, function ($app) use ($analyticsClass) {
+            return $app->make($analyticsClass);
+        });
+    }
+
+    /**
+     * Bootstrap package services.
+     */
+    public function boot(): void
+    {
+        $this->registerAwardTypes();
+        $this->registerCommands();
+        $this->registerPublishables();
+        $this->registerMigrations();
+        $this->registerRoutes();
+        $this->registerViews();
+        $this->registerEventSubscribers();
+    }
+
+    /**
+     * Register custom award types from configuration.
+     */
+    protected function registerAwardTypes(): void
+    {
+        $configTypes = config('lfl.award_types', []);
+
+        // Filter out built-in types and register only custom ones
+        $builtInTypes = ['points', 'achievement', 'prize', 'badge'];
+        $customTypes = Arr::except($configTypes, $builtInTypes);
+
+        if (! empty($customTypes)) {
+            AwardTypeRegistry::registerMany($customTypes);
+        }
+    }
+
+    /**
+     * Register artisan commands provided by the package.
+     */
+    protected function registerCommands(): void
+    {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        $this->commands([
+            InstallCommand::class,
+        ]);
+    }
+
+    /**
+     * Register event subscribers for the event pipeline.
+     */
+    protected function registerEventSubscribers(): void
+    {
+        // Register the EventLog subscriber if event logging is enabled
+        if (config('lfl.events.log_to_database', true)) {
+            Event::subscribe(EventLogSubscriber::class);
+        }
+    }
+
+    /**
+     * Register publishable assets for vendor:publish command.
+     */
+    protected function registerPublishables(): void
+    {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        // Publish config file
+        $this->publishes([
+            __DIR__.'/../config/lfl.php' => config_path('lfl.php'),
+        ], 'lfl-config');
+
+        // Publish migrations
+        $this->publishes([
+            __DIR__.'/../database/migrations' => database_path('migrations'),
+        ], 'lfl-migrations');
+
+        // Publish views for customization
+        $this->publishes([
+            __DIR__.'/../resources/views' => resource_path('views/vendor/lfl'),
+        ], 'lfl-views');
+
+        // Publish all assets at once
+        $this->publishes([
+            __DIR__.'/../config/lfl.php' => config_path('lfl.php'),
+            __DIR__.'/../database/migrations' => database_path('migrations'),
+            __DIR__.'/../resources/views' => resource_path('views/vendor/lfl'),
+        ], 'lfl');
+    }
+
+    /**
+     * Register package migrations.
+     */
+    protected function registerMigrations(): void
+    {
+        // Only load migrations if configured to do so
+        if (config('lfl.migrations', true)) {
+            $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+        }
+    }
+
+    /**
+     * Register package routes.
+     */
+    protected function registerRoutes(): void
+    {
+        // Only load routes if the API is enabled
+        if (config('lfl.api.enabled', true)) {
+            $this->loadRoutesFrom(__DIR__.'/../routes/api.php');
+        }
+
+        // Only load web routes if the UI layer is enabled
+        if (config('lfl.ui.enabled', false)) {
+            $this->loadRoutesFrom(__DIR__.'/../routes/web.php');
+        }
+    }
+
+    /**
+     * Register package views.
+     */
+    protected function registerViews(): void
+    {
+        // Only load views if the UI layer is enabled
+        if (config('lfl.ui.enabled', false)) {
+            $this->loadViewsFrom(__DIR__.'/../resources/views', 'lfl');
+        }
+    }
+}
