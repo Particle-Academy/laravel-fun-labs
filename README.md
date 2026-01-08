@@ -1,6 +1,6 @@
 # Laravel Fun Lab
 
-[![Powered by Tynn](https://tynn.ai/o/particle-academy/laravel-fun-lab/badge.svg)](https://tynn.ai/o/particle-academy/laravel-fun-lab)
+[![Powered by Tynn](https://img.shields.io/endpoint?url=https%3A%2F%2Ftynn.ai%2Fo%2Fparticle-academy%2Flaravel-fun-lab%2Fbadge.json)](https://tynn.ai/o/particle-academy/laravel-fun-lab)
 [![Latest Version](https://img.shields.io/packagist/v/particleacademy/laravel-fun-lab.svg?style=flat-square)](https://packagist.org/packages/particleacademy/laravel-fun-lab)
 [![License](https://img.shields.io/packagist/l/particleacademy/laravel-fun-lab.svg?style=flat-square)](https://packagist.org/packages/particleacademy/laravel-fun-lab)
 [![Laravel](https://img.shields.io/badge/Laravel-11.x%20%7C%2012.x-red.svg?style=flat-square)](https://laravel.com)
