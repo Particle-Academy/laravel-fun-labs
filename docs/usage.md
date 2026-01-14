@@ -187,6 +187,16 @@ if (!$user->hasAchievement('first-purchase')) {
 }
 ```
 
+### Managing Achievements via UI
+
+When the UI layer is enabled (`config('lfl.ui.enabled') => true`), you can manage achievements through the admin interface:
+
+- Visit `/lfl/admin/achievements` to view all achievements
+- Create new achievements via `/lfl/admin/achievements/create`
+- Edit existing achievements via `/lfl/admin/achievements/{achievement}/edit`
+- Delete achievements via the delete action in the list
+- Attach prizes to achievements that should be awarded when the achievement is unlocked
+
 ## Leaderboards
 
 ### Basic Leaderboard
@@ -364,6 +374,34 @@ $events = LFL::analytics()
 
 ## Prizes
 
+### Creating Prizes
+
+Prizes can be created programmatically or via the admin UI:
+
+```php
+use LaravelFunLab\Models\Prize;
+use LaravelFunLab\Enums\PrizeType;
+
+// Create a prize programmatically
+$prize = Prize::create([
+    'name' => 'Premium Badge',
+    'slug' => 'premium-badge',
+    'description' => 'Exclusive premium membership badge',
+    'type' => PrizeType::Virtual,
+    'cost_in_points' => 1000,
+    'inventory_quantity' => null, // Unlimited
+    'is_active' => true,
+]);
+```
+
+### Prize Types
+
+Prizes support different types:
+- `Virtual` - Digital rewards (badges, titles, etc.)
+- `Physical` - Physical items that need shipping
+- `FeatureUnlock` - Unlocks features or capabilities
+- `Custom` - Custom prize type for your use case
+
 ### Awarding Prizes
 
 ```php
@@ -378,6 +416,34 @@ $result = LFL::award('prize')
 // Using shorthand
 LFL::awardPrize($user, 'won contest', 'contest-system');
 ```
+
+### Inventory Management
+
+Prizes can have limited inventory:
+
+```php
+// Create prize with limited inventory
+$prize = Prize::create([
+    'name' => 'Limited Edition T-Shirt',
+    'type' => PrizeType::Physical,
+    'inventory_quantity' => 50, // Only 50 available
+]);
+
+// Check availability
+if ($prize->isAvailable()) {
+    // Prize can be awarded
+    $remaining = $prize->getRemainingInventory(); // Returns remaining count
+}
+```
+
+### Managing Prizes via UI
+
+When the UI layer is enabled (`config('lfl.ui.enabled') => true`), you can manage prizes through the admin interface:
+
+- Visit `/lfl/admin/prizes` to view all prizes
+- Create new prizes via `/lfl/admin/prizes/create`
+- Edit existing prizes via `/lfl/admin/prizes/{prize}/edit`
+- Delete prizes via the delete action in the list
 
 ## Badges
 

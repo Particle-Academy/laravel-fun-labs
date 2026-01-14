@@ -179,6 +179,11 @@ class EventLog extends Model
      */
     public function scopeRecent($query, int $days = 7)
     {
+        // If days is 0, return nothing (logs older than 0 days = nothing)
+        if ($days === 0) {
+            return $query->whereRaw('1 = 0'); // Always false condition
+        }
+
         return $query->where('occurred_at', '>=', now()->subDays($days));
     }
 

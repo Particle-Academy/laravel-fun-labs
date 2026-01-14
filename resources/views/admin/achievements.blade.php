@@ -60,7 +60,12 @@
                         @endif
                     </td>
                     <td>
-                        <a href="{{ route('lfl.admin.achievements.edit', $achievement) }}" style="color: #007bff; text-decoration: none;">Edit</a>
+                        <a href="{{ route('lfl.admin.achievements.edit', $achievement) }}" style="color: #007bff; text-decoration: none; margin-right: 10px;">Edit</a>
+                        <form method="POST" action="{{ route('lfl.admin.achievements.delete', $achievement) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this achievement?');">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" style="color: #dc3545; text-decoration: none; background: none; border: none; cursor: pointer; padding: 0;">Delete</button>
+                        </form>
                     </td>
                 </tr>
             @empty

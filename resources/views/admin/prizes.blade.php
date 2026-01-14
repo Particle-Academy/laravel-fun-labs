@@ -37,8 +37,11 @@
                     <td>{{ $prize->type->label() }}</td>
                     <td>{{ $prize->cost_in_points ? number_format($prize->cost_in_points) . ' points' : 'Free' }}</td>
                     <td>
-                        @if($prize->inventory_limit)
-                            {{ $prize->getRemainingInventory() }} / {{ $prize->inventory_limit }}
+                        @if($prize->inventory_quantity !== null)
+                            @php
+                                $remaining = $prize->getRemainingInventory();
+                            @endphp
+                            {{ $remaining !== null ? $remaining : 0 }} / {{ $prize->inventory_quantity }}
                         @else
                             Unlimited
                         @endif
@@ -51,7 +54,12 @@
                         @endif
                     </td>
                     <td>
-                        <a href="{{ route('lfl.admin.prizes.edit', $prize) }}" style="color: #007bff; text-decoration: none;">Edit</a>
+                        <a href="{{ route('lfl.admin.prizes.edit', $prize) }}" style="color: #007bff; text-decoration: none; margin-right: 10px;">Edit</a>
+                        <form method="POST" action="{{ route('lfl.admin.prizes.delete', $prize) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this prize?');">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" style="color: #dc3545; text-decoration: none; background: none; border: none; cursor: pointer; padding: 0;">Delete</button>
+                        </form>
                     </td>
                 </tr>
             @empty

@@ -36,6 +36,8 @@ Route::prefix(config('lfl.ui.prefix', 'lfl'))
                 ->name('achievements.edit');
             Route::put('/achievements/{achievement}', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'updateAchievement'])
                 ->name('achievements.update');
+            Route::delete('/achievements/{achievement}', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'deleteAchievement'])
+                ->name('achievements.delete');
             Route::get('/prizes', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'prizes'])
                 ->name('prizes');
             Route::get('/prizes/create', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'createPrize'])
@@ -46,6 +48,8 @@ Route::prefix(config('lfl.ui.prefix', 'lfl'))
                 ->name('prizes.edit');
             Route::put('/prizes/{prize}', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'updatePrize'])
                 ->name('prizes.update');
+            Route::delete('/prizes/{prize}', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'deletePrize'])
+                ->name('prizes.delete');
             Route::get('/analytics', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'analytics'])
                 ->name('analytics');
 

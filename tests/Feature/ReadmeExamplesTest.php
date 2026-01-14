@@ -27,7 +27,7 @@ describe('README Quick Start Examples', function () {
     it('example 1: can add Awardable trait to User model', function () {
         // This is verified by the User fixture already using the trait
         // Verify the trait methods work by calling them
-        expect($this->user->getTotalPoints())->toBe(0)
+        expect($this->user->getTotalPoints())->toBe(0.0) // getTotalPoints returns float
             ->and($this->user->hasAchievement('test'))->toBeFalse();
     });
 

@@ -154,6 +154,19 @@ class AdminController extends Controller
     }
 
     /**
+     * Delete an achievement.
+     *
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function deleteAchievement(Achievement $achievement)
+    {
+        $achievement->delete();
+
+        return redirect()->route('lfl.admin.achievements')
+            ->with('success', 'Achievement deleted successfully.');
+    }
+
+    /**
      * Display prizes management page.
      *
      * @return \Illuminate\View\View
@@ -246,6 +259,19 @@ class AdminController extends Controller
 
         return redirect()->route('lfl.admin.prizes')
             ->with('success', 'Prize updated successfully.');
+    }
+
+    /**
+     * Delete a prize.
+     *
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function deletePrize(Prize $prize)
+    {
+        $prize->delete();
+
+        return redirect()->route('lfl.admin.prizes')
+            ->with('success', 'Prize deleted successfully.');
     }
 
     /**

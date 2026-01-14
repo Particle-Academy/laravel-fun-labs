@@ -784,6 +784,144 @@ AwardType::Points;
 AwardType::Achievement;
 ```
 
+## REST API Endpoints
+
+When the API layer is enabled (`config('lfl.api.enabled') => true`), LFL provides REST API endpoints for accessing gamification data.
+
+### Base URL
+
+All API endpoints are prefixed with the configured API prefix (default: `api/lfl`).
+
+### Profile API
+
+#### `GET /api/lfl/profiles/{type}/{id}`
+
+Get profile data for a specific awardable entity.
+
+**Parameters:**
+- `type` - The awardable type (e.g., `App\Models\User`)
+- `id` - The awardable ID
+
+**Response:**
+```json
+{
+  "data": {
+    "id": "01abc...",
+    "awardable_type": "App\\Models\\User",
+    "awardable_id": 1,
+    "is_opted_in": true,
+    "total_points": 1250.0,
+    "achievement_count": 5,
+    "prize_count": 2,
+    "last_activity_at": "2024-12-30T12:00:00Z",
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-12-30T12:00:00Z"
+  }
+}
+```
+
+### Leaderboard API
+
+#### `GET /api/lfl/leaderboards/{type}`
+
+Get leaderboard data for a specific awardable type.
+
+**Query Parameters:**
+- `by` - Sort metric: `'points'`, `'achievements'`, `'prizes'` (default: `'points'`)
+- `period` - Time period: `'daily'`, `'weekly'`, `'monthly'`, `'all-time'` (default: `'all-time'`)
+- `per_page` - Items per page (default: 15)
+- `page` - Page number (default: 1)
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "rank": 1,
+      "id": "01abc...",
+      "awardable_type": "App\\Models\\User",
+      "awardable_id": 1,
+      "total_points": 5000.0,
+      "achievement_count": 10,
+      "prize_count": 3,
+      "last_activity_at": "2024-12-30T12:00:00Z"
+    }
+  ],
+  "meta": {
+    "current_page": 1,
+    "per_page": 15,
+    "total": 100
+  },
+  "links": {
+    "first": "...",
+    "last": "...",
+    "prev": null,
+    "next": "..."
+  }
+}
+```
+
+### Achievements API
+
+#### `GET /api/lfl/achievements`
+
+Get all available achievements.
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "slug": "first-login",
+      "name": "First Login",
+      "description": "Welcome! You've logged in for the first time.",
+      "icon": "⭐",
+      "is_active": true
+    }
+  ]
+}
+```
+
+### Awards API
+
+#### `GET /api/lfl/awards/{type}/{id}`
+
+Get all awards for a specific awardable entity.
+
+**Parameters:**
+- `type` - The awardable type (e.g., `App\Models\User`)
+- `id` - The awardable ID
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "type": "points",
+      "amount": 50,
+      "reason": "Completed task",
+      "source": "task-system",
+      "created_at": "2024-12-30T12:00:00Z"
+    }
+  ]
+}
+```
+
+### Authentication
+
+API endpoints can be protected with authentication middleware. Configure this in `config/lfl.php`:
+
+```php
+'api' => [
+    'enabled' => true,
+    'auth' => [
+        'middleware' => 'auth:sanctum', // or null for no auth
+    ],
+],
+```
+
 ## Next Steps
 
 - [Usage Guide](usage.md) - Practical examples and patterns

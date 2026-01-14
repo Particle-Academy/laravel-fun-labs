@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class NonAwardableModel extends Model
 {
-    protected $fillable = ['name'];
+    protected $fillable = ['name', 'email'];
 
     protected $table = 'users';
 }

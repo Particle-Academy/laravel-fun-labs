@@ -49,7 +49,7 @@ describe('Points Awards', function () {
             ->grant();
 
         expect($result)->toBeSuccessfulAward()
-            ->and($result->type)->toBe(AwardType::Points)
+            ->and($result->type)->toBe('points') // AwardResult stores type as string value
             ->and($result->award)->toBeInstanceOf(Award::class)
             ->and($result->award->amount)->toBe('50.00')
             ->and($result->award->reason)->toBe('completing a task')
@@ -132,7 +132,7 @@ describe('Achievement Awards', function () {
             ->grant();
 
         expect($result)->toBeSuccessfulAward()
-            ->and($result->type)->toBe(AwardType::Achievement)
+            ->and($result->type)->toBe('achievement') // AwardResult stores type as string value
             ->and($result->meta['achievement_slug'])->toBe('first-login')
             ->and($user->hasAchievement('first-login'))->toBeTrue();
     });
@@ -206,7 +206,7 @@ describe('Prize Awards', function () {
             ->grant();
 
         expect($result)->toBeSuccessfulAward()
-            ->and($result->type)->toBe(AwardType::Prize)
+            ->and($result->type)->toBe('prize') // AwardResult stores type as string value
             ->and($result->award->type)->toBe('prize');
     });
 
@@ -243,7 +243,7 @@ describe('Badge Awards', function () {
             ->grant();
 
         expect($result)->toBeSuccessfulAward()
-            ->and($result->type)->toBe(AwardType::Badge)
+            ->and($result->type)->toBe('badge') // AwardResult stores type as string value
             ->and($result->award->type)->toBe('badge');
     });
 
@@ -272,7 +272,7 @@ describe('Validation', function () {
     });
 
     it('fails when recipient does not use Awardable trait', function () {
-        $model = NonAwardableModel::create(['name' => 'Test']);
+        $model = NonAwardableModel::create(['name' => 'Test', 'email' => 'test@example.com']);
 
         $result = LFL::award('points')
             ->to($model)
@@ -295,7 +295,7 @@ describe('Events', function () {
         LFL::awardPoints($user, 50);
 
         Event::assertDispatched(AwardGranted::class, function ($event) use ($user) {
-            return $event->type === AwardType::Points
+            return $event->type === 'points' // Event stores type as string value
                 && $event->recipient->is($user)
                 && $event->award->amount === '50.00';
         });
@@ -304,12 +304,12 @@ describe('Events', function () {
     it('dispatches AwardFailed event on failed award', function () {
         Event::fake([AwardFailed::class]);
 
-        $model = NonAwardableModel::create(['name' => 'Test']);
+        $model = NonAwardableModel::create(['name' => 'Test', 'email' => 'test@example.com']);
 
         LFL::award('points')->to($model)->amount(50)->grant();
 
         Event::assertDispatched(AwardFailed::class, function ($event) {
-            return $event->type === AwardType::Points
+            return $event->type === 'points' // Event stores type as string value
                 && $event->result->message === 'Recipient must use the Awardable trait';
         });
     });
