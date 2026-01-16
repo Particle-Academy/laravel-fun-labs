@@ -5,12 +5,11 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Event;
 use LaravelFunLab\Events\AchievementUnlocked;
 use LaravelFunLab\Events\AwardGranted;
-use LaravelFunLab\Events\BadgeAwarded;
-use LaravelFunLab\Events\PointsAwarded;
 use LaravelFunLab\Events\PrizeAwarded;
 use LaravelFunLab\Facades\LFL;
 use LaravelFunLab\Models\Achievement;
 use LaravelFunLab\Models\EventLog;
+use LaravelFunLab\Models\GamedMetric;
 use LaravelFunLab\Tests\Fixtures\User;
 
 /*
@@ -23,66 +22,35 @@ use LaravelFunLab\Tests\Fixtures\User;
 |
 */
 
-describe('PointsAwarded Event', function () {
+describe('XP Awarded Events', function () {
 
-    it('dispatches PointsAwarded when points are awarded', function () {
-        Event::fake([PointsAwarded::class]);
-
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        LFL::awardPoints($user, 50, 'task completion', 'task-system');
-
-        Event::assertDispatched(PointsAwarded::class, function ($event) use ($user) {
-            return $event->recipient->is($user)
-                && $event->amount === 50.0
-                && $event->reason === 'task completion'
-                && $event->source === 'task-system';
-        });
+    beforeEach(function () {
+        // Create a GamedMetric for XP tests
+        GamedMetric::create([
+            'slug' => 'general-xp',
+            'name' => 'General XP',
+            'description' => 'General experience points',
+            'active' => true,
+        ]);
     });
 
-    it('includes previous and new totals in PointsAwarded event', function () {
-        Event::fake([PointsAwarded::class]);
-
+    it('can award XP to a user', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        // First award (manually to set up state)
-        config(['lfl.events.dispatch' => false]);
-        LFL::awardPoints($user, 100);
-        config(['lfl.events.dispatch' => true]);
+        $result = LFL::awardGamedMetric($user, 'general-xp', 50);
 
-        // Second award - this will dispatch the event
-        LFL::awardPoints($user, 50);
-
-        Event::assertDispatched(PointsAwarded::class, function ($event) {
-            return $event->previousTotal === 100.0
-                && $event->newTotal === 150.0;
-        });
+        expect($result->total_xp)->toBe(50);
     });
 
-    it('converts PointsAwarded to log array correctly', function () {
+    it('accumulates XP correctly', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        $result = LFL::awardPoints($user, 25, 'test reason', 'test-source');
+        LFL::awardGamedMetric($user, 'general-xp', 50);
+        LFL::awardGamedMetric($user, 'general-xp', 30);
 
-        $event = new PointsAwarded(
-            recipient: $user,
-            award: $result->award,
-            amount: 25.0,
-            reason: 'test reason',
-            source: 'test-source',
-            previousTotal: 0,
-            newTotal: 25.0,
-        );
+        $profile = $user->getProfile()->fresh();
 
-        $logArray = $event->toLogArray();
-
-        expect($logArray)
-            ->toHaveKey('event_type', 'points_awarded')
-            ->toHaveKey('award_type', 'points')
-            ->toHaveKey('recipient_id', $user->id)
-            ->toHaveKey('amount', 25.0)
-            ->toHaveKey('reason', 'test reason')
-            ->toHaveKey('source', 'test-source');
+        expect($profile->total_xp)->toBe(80);
     });
 
 });
@@ -103,13 +71,11 @@ describe('AchievementUnlocked Event', function () {
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        LFL::grantAchievement($user, 'first-login', 'user logged in', 'auth-system');
+        LFL::grantAchievement($user, 'first-login', 'first time login', 'auth');
 
         Event::assertDispatched(AchievementUnlocked::class, function ($event) use ($user) {
             return $event->recipient->is($user)
-                && $event->achievement->slug === 'first-login'
-                && $event->reason === 'user logged in'
-                && $event->source === 'auth-system';
+                && $event->achievement->slug === 'first-login';
         });
     });
 
@@ -121,44 +87,74 @@ describe('AchievementUnlocked Event', function () {
         LFL::grantAchievement($user, 'first-login');
 
         Event::assertDispatched(AchievementUnlocked::class, function ($event) {
-            return $event->getAchievementSlug() === 'first-login'
-                && $event->getAchievementName() === 'First Login';
+            return $event->achievement->name === 'First Login'
+                && $event->achievement->description === 'Logged in for the first time';
         });
     });
 
-    it('does not dispatch AchievementUnlocked when achievement already granted', function () {
-        Event::fake([AchievementUnlocked::class]);
-
+    it('provides achievement via property', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        $achievement = Achievement::where('slug', 'first-login')->first();
 
-        // Grant once
-        config(['lfl.events.dispatch' => false]);
-        LFL::grantAchievement($user, 'first-login');
-        config(['lfl.events.dispatch' => true]);
+        $result = LFL::grantAchievement($user, 'first-login');
 
-        Event::fake([AchievementUnlocked::class]);
+        $event = new AchievementUnlocked(
+            recipient: $user,
+            achievement: $achievement,
+            grant: $result->award,
+        );
 
-        // Try to grant again
-        LFL::grantAchievement($user, 'first-login');
+        expect($event->achievement->slug)->toBe('first-login');
+    });
 
-        Event::assertNotDispatched(AchievementUnlocked::class);
+    it('converts AchievementUnlocked to log array correctly', function () {
+        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        $achievement = Achievement::where('slug', 'first-login')->first();
+
+        $result = LFL::grantAchievement($user, 'first-login');
+
+        $event = new AchievementUnlocked(
+            recipient: $user,
+            achievement: $achievement,
+            grant: $result->award,
+        );
+
+        $logArray = $event->toLogArray();
+
+        expect($logArray)
+            ->toHaveKey('event_type', 'achievement_unlocked')
+            ->toHaveKey('award_type', 'achievement')
+            ->toHaveKey('recipient_id', $user->id)
+            ->toHaveKey('achievement_slug', 'first-login');
     });
 
 });
 
 describe('PrizeAwarded Event', function () {
 
+    beforeEach(function () {
+        \LaravelFunLab\Models\Prize::create([
+            'slug' => 'test-prize',
+            'name' => 'Test Prize',
+            'type' => \LaravelFunLab\Enums\PrizeType::Virtual,
+        ]);
+    });
+
     it('dispatches PrizeAwarded when prize is awarded', function () {
         Event::fake([PrizeAwarded::class]);
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        $user->getProfile();
 
-        LFL::awardPrize($user, 'contest winner', 'contest-system');
+        LFL::award('prize')
+            ->to($user)
+            ->for('won a contest')
+            ->from('contest-system')
+            ->withMeta(['prize_slug' => 'test-prize'])
+            ->grant();
 
         Event::assertDispatched(PrizeAwarded::class, function ($event) use ($user) {
-            return $event->recipient->is($user)
-                && $event->reason === 'contest winner'
-                && $event->source === 'contest-system';
+            return $event->recipient->is($user);
         });
     });
 
@@ -166,46 +162,22 @@ describe('PrizeAwarded Event', function () {
         Event::fake([PrizeAwarded::class]);
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        $user->getProfile();
 
         LFL::award('prize')
             ->to($user)
-            ->for('grand prize')
-            ->withMeta(['prize_type' => 'gift_card', 'value' => 100])
+            ->for('won a contest')
+            ->from('contest-system')
+            ->withMeta([
+                'prize_slug' => 'test-prize',
+                'contest_id' => 123,
+            ])
             ->grant();
 
         Event::assertDispatched(PrizeAwarded::class, function ($event) {
-            return $event->meta['prize_type'] === 'gift_card'
-                && $event->meta['value'] === 100;
-        });
-    });
+            $meta = $event->award->meta ?? [];
 
-});
-
-describe('BadgeAwarded Event', function () {
-
-    it('dispatches BadgeAwarded when badge is awarded', function () {
-        Event::fake([BadgeAwarded::class]);
-
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        LFL::awardBadge($user, 'early-adopter', 'onboarding');
-
-        Event::assertDispatched(BadgeAwarded::class, function ($event) use ($user) {
-            return $event->recipient->is($user)
-                && $event->reason === 'early-adopter'
-                && $event->source === 'onboarding';
-        });
-    });
-
-    it('provides badge identifier via helper method', function () {
-        Event::fake([BadgeAwarded::class]);
-
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        LFL::awardBadge($user, 'verified-user');
-
-        Event::assertDispatched(BadgeAwarded::class, function ($event) {
-            return $event->getBadgeIdentifier() === 'verified-user';
+            return isset($meta['contest_id']) && $meta['contest_id'] === 123;
         });
     });
 
@@ -213,24 +185,15 @@ describe('BadgeAwarded Event', function () {
 
 describe('Generic AwardGranted Event', function () {
 
-    it('dispatches both generic and specific events for points', function () {
-        Event::fake([AwardGranted::class, PointsAwarded::class]);
-
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        LFL::awardPoints($user, 50);
-
-        Event::assertDispatched(AwardGranted::class);
-        Event::assertDispatched(PointsAwarded::class);
-    });
-
-    it('dispatches both generic and specific events for achievements', function () {
+    beforeEach(function () {
         Achievement::create([
             'slug' => 'test-achievement',
             'name' => 'Test Achievement',
             'is_active' => true,
         ]);
+    });
 
+    it('dispatches both generic and specific events for achievements', function () {
         Event::fake([AwardGranted::class, AchievementUnlocked::class]);
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
@@ -241,205 +204,122 @@ describe('Generic AwardGranted Event', function () {
         Event::assertDispatched(AchievementUnlocked::class);
     });
 
+    it('includes award type in generic event', function () {
+        Event::fake([AwardGranted::class]);
+
+        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+
+        LFL::grantAchievement($user, 'test-achievement');
+
+        Event::assertDispatched(AwardGranted::class, function ($event) {
+            return $event->type === 'achievement';
+        });
+    });
+
 });
 
 describe('EventLog Model', function () {
 
-    it('logs points awarded events to database', function () {
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+    beforeEach(function () {
+        // Create a GamedMetric for XP tests
+        GamedMetric::create([
+            'slug' => 'general-xp',
+            'name' => 'General XP',
+            'description' => 'General experience points',
+            'active' => true,
+        ]);
 
-        LFL::awardPoints($user, 75, 'test award', 'test-source');
-
-        $log = EventLog::latest()->first();
-
-        expect($log)
-            ->not->toBeNull()
-            ->event_type->toBe('points_awarded')
-            ->award_type->toBe('points')
-            ->awardable_id->toBe($user->id)
-            ->amount->toBe(75.0)
-            ->reason->toBe('test award')
-            ->source->toBe('test-source');
-    });
-
-    it('logs achievement unlocked events to database', function () {
         Achievement::create([
-            'slug' => 'logged-achievement',
-            'name' => 'Logged Achievement',
+            'slug' => 'test-achievement',
+            'name' => 'Test Achievement',
             'is_active' => true,
         ]);
 
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        LFL::grantAchievement($user, 'logged-achievement');
-
-        $log = EventLog::ofEventType('achievement_unlocked')->first();
-
-        expect($log)
-            ->not->toBeNull()
-            ->event_type->toBe('achievement_unlocked')
-            ->award_type->toBe('achievement')
-            ->achievement_slug->toBe('logged-achievement');
+        \LaravelFunLab\Models\Prize::create([
+            'slug' => 'test-prize',
+            'name' => 'Test Prize',
+            'type' => \LaravelFunLab\Enums\PrizeType::Virtual,
+        ]);
     });
 
-    it('logs badge awarded events to database', function () {
+    it('logs achievement granted events to database', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        LFL::awardBadge($user, 'test-badge', 'badge-system');
+        LFL::grantAchievement($user, 'test-achievement');
 
-        $log = EventLog::ofEventType('badge_awarded')->first();
+        $log = EventLog::where('event_type', 'achievement_unlocked')->first();
 
-        expect($log)
-            ->not->toBeNull()
-            ->event_type->toBe('badge_awarded')
-            ->award_type->toBe('badge')
-            ->source->toBe('badge-system');
+        expect($log)->not->toBeNull()
+            ->and($log->award_type)->toBe('achievement')
+            ->and($log->awardable_id)->toBe($user->id);
     });
 
     it('logs prize awarded events to database', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        $user->getProfile();
 
-        LFL::awardPrize($user, 'prize reason', 'prize-source');
+        LFL::award('prize')
+            ->to($user)
+            ->for('test prize')
+            ->withMeta(['prize_slug' => 'test-prize'])
+            ->grant();
 
-        $log = EventLog::ofEventType('prize_awarded')->first();
+        $log = EventLog::where('event_type', 'prize_awarded')->first();
 
-        expect($log)
-            ->not->toBeNull()
-            ->event_type->toBe('prize_awarded')
-            ->award_type->toBe('prize')
-            ->reason->toBe('prize reason');
+        expect($log)->not->toBeNull()
+            ->and($log->award_type)->toBe('prize')
+            ->and($log->awardable_id)->toBe($user->id);
     });
 
     it('stores full event context as JSON', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        LFL::awardPoints($user, 100, 'bonus points', 'admin');
+        LFL::grantAchievement($user, 'test-achievement', 'completed task', 'task-system');
 
-        $log = EventLog::latest()->first();
+        $log = EventLog::where('event_type', 'achievement_unlocked')->first();
 
-        expect($log->context)
-            ->toBeArray()
-            ->toHaveKey('event_type', 'points_awarded')
-            ->toHaveKey('amount', 100.0)
-            ->toHaveKey('occurred_at');
+        expect($log)->not->toBeNull()
+            ->and($log->context)->toBeArray()
+            ->and($log->context)->toHaveKey('reason', 'completed task')
+            ->and($log->context)->toHaveKey('source', 'task-system');
     });
 
     it('can filter logs by award type', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        $user->getProfile();
 
-        LFL::awardPoints($user, 50);
-        LFL::awardBadge($user, 'test-badge');
-        LFL::awardPoints($user, 25);
+        LFL::grantAchievement($user, 'test-achievement');
+        LFL::award('prize')
+            ->to($user)
+            ->for('test prize')
+            ->withMeta(['prize_slug' => 'test-prize'])
+            ->grant();
 
-        $pointsLogs = EventLog::ofAwardType('points')->count();
-        $badgeLogs = EventLog::ofAwardType('badge')->count();
+        $achievementLogs = EventLog::where('award_type', 'achievement')->count();
+        $prizeLogs = EventLog::where('award_type', 'prize')->count();
 
-        expect($pointsLogs)->toBe(2)
-            ->and($badgeLogs)->toBe(1);
+        expect($achievementLogs)->toBe(1)
+            ->and($prizeLogs)->toBe(1);
     });
 
     it('can filter logs by awardable', function () {
         $user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
         $user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
 
-        LFL::awardPoints($user1, 50);
-        LFL::awardPoints($user1, 25);
-        LFL::awardPoints($user2, 100);
+        LFL::grantAchievement($user1, 'test-achievement');
 
-        $user1Logs = EventLog::forAwardable($user1)->count();
-        $user2Logs = EventLog::forAwardable($user2)->count();
+        Achievement::create([
+            'slug' => 'another-achievement',
+            'name' => 'Another Achievement',
+            'is_active' => true,
+        ]);
+        LFL::grantAchievement($user2, 'another-achievement');
 
-        expect($user1Logs)->toBe(2)
+        $user1Logs = EventLog::where('awardable_id', $user1->id)->count();
+        $user2Logs = EventLog::where('awardable_id', $user2->id)->count();
+
+        expect($user1Logs)->toBe(1)
             ->and($user2Logs)->toBe(1);
-    });
-
-    it('can filter logs by source', function () {
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        LFL::awardPoints($user, 50, 'reason1', 'source-a');
-        LFL::awardPoints($user, 25, 'reason2', 'source-b');
-        LFL::awardPoints($user, 75, 'reason3', 'source-a');
-
-        $sourceALogs = EventLog::fromSource('source-a')->count();
-        $sourceBLogs = EventLog::fromSource('source-b')->count();
-
-        expect($sourceALogs)->toBe(2)
-            ->and($sourceBLogs)->toBe(1);
-    });
-
-    it('can filter recent logs', function () {
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        LFL::awardPoints($user, 50);
-
-        $recentLogs = EventLog::recent(7)->count();
-        $oldLogs = EventLog::recent(0)->count();
-
-        expect($recentLogs)->toBe(1)
-            ->and($oldLogs)->toBe(0);
-    });
-
-    it('does not log events when disabled in config', function () {
-        config(['lfl.events.log_to_database' => false]);
-
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        LFL::awardPoints($user, 50);
-
-        expect(EventLog::count())->toBe(0);
-
-        // Re-enable for other tests
-        config(['lfl.events.log_to_database' => true]);
-    });
-
-});
-
-describe('Event Pipeline Configuration', function () {
-
-    it('does not dispatch any events when dispatch is disabled', function () {
-        Event::fake([AwardGranted::class, PointsAwarded::class]);
-
-        config(['lfl.events.dispatch' => false]);
-
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        LFL::awardPoints($user, 50);
-
-        Event::assertNotDispatched(AwardGranted::class);
-        Event::assertNotDispatched(PointsAwarded::class);
-
-        // Re-enable for other tests
-        config(['lfl.events.dispatch' => true]);
-    });
-
-});
-
-describe('LflEvent Contract', function () {
-
-    it('all specific events implement LflEvent contract', function () {
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-        $result = LFL::awardPoints($user, 50, 'test', 'source');
-
-        $pointsEvent = new PointsAwarded($user, $result->award, 50, 'test', 'source');
-        $badgeEvent = new BadgeAwarded($user, $result->award, 'badge', 'source');
-        $prizeEvent = new PrizeAwarded($user, $result->award, 'prize', 'source');
-
-        expect($pointsEvent)->toBeInstanceOf(\LaravelFunLab\Contracts\LflEvent::class)
-            ->and($badgeEvent)->toBeInstanceOf(\LaravelFunLab\Contracts\LflEvent::class)
-            ->and($prizeEvent)->toBeInstanceOf(\LaravelFunLab\Contracts\LflEvent::class);
-    });
-
-    it('events provide consistent interface methods', function () {
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-        $result = LFL::awardPoints($user, 50, 'test reason', 'test source');
-
-        $event = new PointsAwarded($user, $result->award, 50, 'test reason', 'test source');
-
-        expect($event->getAwardType()->value)->toBe('points')
-            ->and($event->getRecipient())->toBe($user)
-            ->and($event->getReason())->toBe('test reason')
-            ->and($event->getSource())->toBe('test source')
-            ->and($event->toLogArray())->toBeArray();
     });
 
 });

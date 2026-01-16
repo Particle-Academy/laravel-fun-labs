@@ -10,12 +10,14 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 use LaravelFunLab\Contracts\LflEvent;
 use LaravelFunLab\Enums\AwardType;
-use LaravelFunLab\Models\Award;
+use LaravelFunLab\Models\ProfileMetric;
 
 /**
  * PointsAwarded Event
  *
- * Dispatched whenever points are awarded to an entity.
+ * @deprecated Use XpAwarded event instead. This event is for legacy points system.
+ *
+ * Dispatched whenever XP is awarded to a GamedMetric.
  * Contains full context about the award for listeners to use.
  */
 class PointsAwarded implements LflEvent
@@ -23,17 +25,17 @@ class PointsAwarded implements LflEvent
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     /**
-     * @param  Model  $recipient  The entity that received points
-     * @param  Award  $award  The award record that was created
-     * @param  float  $amount  The number of points awarded
-     * @param  string|null  $reason  Why points were awarded
-     * @param  string|null  $source  Where points came from
-     * @param  float  $previousTotal  Total points before this award
-     * @param  float  $newTotal  Total points after this award
+     * @param  Model  $recipient  The entity that received XP
+     * @param  ProfileMetric|Model  $award  The ProfileMetric record that was updated
+     * @param  float  $amount  The amount of XP awarded
+     * @param  string|null  $reason  Why XP was awarded
+     * @param  string|null  $source  Where XP came from
+     * @param  float  $previousTotal  Total XP before this award
+     * @param  float  $newTotal  Total XP after this award
      */
     public function __construct(
         public Model $recipient,
-        public Award $award,
+        public ProfileMetric|Model $award,
         public float $amount,
         public ?string $reason = null,
         public ?string $source = null,

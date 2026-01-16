@@ -18,9 +18,9 @@
         </form>
     </div>
 
-    <h2>Awards Over Time</h2>
+    <h2>XP Awarded Over Time</h2>
     <div class="card" style="margin-bottom: 30px;">
-        <canvas id="awardsChart" style="max-height: 300px;"></canvas>
+        <canvas id="xpChart" style="max-height: 300px;"></canvas>
     </div>
 
     <h2>Top Earners</h2>
@@ -29,7 +29,7 @@
             <tr>
                 <th>Rank</th>
                 <th>User</th>
-                <th>Total Points</th>
+                <th>Total XP</th>
                 <th>Achievements</th>
             </tr>
         </thead>
@@ -38,7 +38,7 @@
                 <tr>
                     <td><strong>#{{ $index + 1 }}</strong></td>
                     <td>{{ $profile->awardable->name ?? 'User #' . $profile->awardable_id }}</td>
-                    <td>{{ number_format((float) $profile->total_points, 0) }}</td>
+                    <td>{{ number_format((int) $profile->total_xp, 0) }}</td>
                     <td>{{ $profile->achievement_count }}</td>
                 </tr>
             @empty
@@ -55,21 +55,21 @@
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    const ctx = document.getElementById('awardsChart');
+    const ctx = document.getElementById('xpChart');
     if (ctx) {
         new Chart(ctx, {
             type: 'line',
             data: {
-                labels: {!! json_encode($awardsOverTime->pluck('date')) !!},
+                labels: {!! json_encode($xpOverTime->pluck('date')) !!},
                 datasets: [{
-                    label: 'Awards',
-                    data: {!! json_encode($awardsOverTime->pluck('count')) !!},
+                    label: 'Profile Updates',
+                    data: {!! json_encode($xpOverTime->pluck('count')) !!},
                     borderColor: '#007bff',
                     backgroundColor: 'rgba(0, 123, 255, 0.1)',
                     tension: 0.4
                 }, {
-                    label: 'Points Awarded',
-                    data: {!! json_encode($awardsOverTime->pluck('total_points')) !!},
+                    label: 'Total XP',
+                    data: {!! json_encode($xpOverTime->pluck('total_xp')) !!},
                     borderColor: '#28a745',
                     backgroundColor: 'rgba(40, 167, 69, 0.1)',
                     tension: 0.4,

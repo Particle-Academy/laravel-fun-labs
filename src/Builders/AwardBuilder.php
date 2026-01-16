@@ -14,7 +14,7 @@ use LaravelFunLab\Events\PointsAwarded;
 use LaravelFunLab\Events\PrizeAwarded;
 use LaravelFunLab\Models\Achievement;
 use LaravelFunLab\Models\AchievementGrant;
-use LaravelFunLab\Models\Award;
+use LaravelFunLab\Models\GamedMetric;
 use LaravelFunLab\Pipelines\AwardValidationPipeline;
 use LaravelFunLab\Registries\AwardTypeRegistry;
 use LaravelFunLab\ValueObjects\AwardResult;
@@ -47,10 +47,14 @@ class AwardBuilder
     /** @var string|Achievement|null Achievement slug or model for achievement awards */
     protected string|Achievement|null $achievement = null;
 
+    /** @var GamedMetric|null Resolved GamedMetric for XP awards */
+    protected ?GamedMetric $gamedMetric = null;
+
     /**
      * Create a new award builder for the specified type.
      *
-     * Supports both built-in enum types and custom string types registered via AwardTypeRegistry.
+     * Supports built-in enum types, custom string types registered via AwardTypeRegistry,
+     * and GamedMetric slugs for XP awards.
      */
     public function __construct(AwardType|string $type)
     {
@@ -63,9 +67,13 @@ class AwardBuilder
             } elseif (AwardTypeRegistry::isRegistered($type)) {
                 // Custom type registered via registry or config
                 $this->type = $type;
+            } elseif ($gamedMetric = GamedMetric::findBySlug($type)) {
+                // Type is a GamedMetric slug - store for XP award
+                $this->gamedMetric = $gamedMetric;
+                $this->type = $type;
             } else {
                 throw new \InvalidArgumentException(
-                    "Award type '{$type}' is not registered. Register it via AwardTypeRegistry::register() or config('lfl.award_types')."
+                    "Award type '{$type}' is not registered. Register it via AwardTypeRegistry::register() or config('lfl.award_types'), or create a GamedMetric with this slug."
                 );
             }
         }
@@ -208,6 +216,7 @@ class AwardBuilder
         // Delegate to type-specific grant method
         $typeValue = $this->getTypeValue();
         $result = match (true) {
+            $this->gamedMetric !== null => $this->grantGamedMetricXp(),
             $this->isEnumType(AwardType::Points) || $this->isEnumType(AwardType::Badge) || $this->isCustomCumulativeType() => $this->grantPointsOrBadge(),
             $this->isEnumType(AwardType::Achievement) => $this->grantAchievement(),
             $this->isEnumType(AwardType::Prize) => $this->grantPrize(),
@@ -284,35 +293,20 @@ class AwardBuilder
     }
 
     /**
-     * Grant points or badge award - creates an Award record.
+     * Grant points or badge award.
+     *
+     * @deprecated Use GamedMetrics for XP tracking instead of generic points/badges.
+     *             Call LFL::award('your-metric-slug') with a GamedMetric slug.
      */
     protected function grantPointsOrBadge(): AwardResult
     {
         $typeValue = $this->getTypeValue();
-        $typeLabel = $this->getTypeLabel();
 
-        // Calculate previous total BEFORE creating the award
-        $previousTotal = $this->recipient->getTotalPoints($typeValue);
-
-        $award = Award::create([
-            'awardable_type' => get_class($this->recipient),
-            'awardable_id' => $this->recipient->getKey(),
-            'type' => $typeValue,
-            'amount' => $this->amount,
-            'reason' => $this->reason,
-            'source' => $this->source,
-            'meta' => $this->meta ?: null,
-        ]);
-
-        return AwardResult::success(
+        return AwardResult::failure(
             type: $typeValue,
-            award: $award,
+            message: "The '{$typeValue}' award type is deprecated. Use GamedMetrics for XP tracking instead. Create a GamedMetric and use LFL::award('your-metric-slug').",
+            errors: ['type' => ["Award type '{$typeValue}' is not supported. Use a GamedMetric slug instead."]],
             recipient: $this->recipient,
-            message: "Awarded {$this->amount} {$typeLabel} to recipient",
-            meta: [
-                'previous_total' => $previousTotal,
-                'new_total' => $previousTotal + $this->amount,
-            ],
         );
     }
 
@@ -368,6 +362,10 @@ class AwardBuilder
             'granted_at' => now(),
         ]);
 
+        // Update profile achievement count
+        $profile = $this->recipient->profile ?? $this->recipient->getProfile();
+        $profile->increment('achievement_count');
+
         return AwardResult::success(
             type: $typeValue,
             award: $grant,
@@ -383,33 +381,111 @@ class AwardBuilder
 
     /**
      * Grant a prize to the recipient.
-     * Note: Prize model will be implemented in Story #9 (Prize System).
+     *
+     * Creates a PrizeGrant record linking the recipient to a prize.
+     * Requires a prize to be specified via the meta['prize_id'] or meta['prize_slug'].
      */
     protected function grantPrize(): AwardResult
     {
         $typeValue = $this->getTypeValue();
 
-        // For now, prizes are tracked as a special Award type
-        // Full Prize model integration comes in Story #9
-        $award = Award::create([
+        // Prize grants require a prize to be specified
+        $prizeId = $this->meta['prize_id'] ?? null;
+        $prizeSlug = $this->meta['prize_slug'] ?? null;
+
+        if ($prizeId === null && $prizeSlug === null) {
+            return AwardResult::failure(
+                type: $typeValue,
+                message: 'Prize not specified. Use withMeta([\'prize_id\' => id]) or withMeta([\'prize_slug\' => slug]).',
+                errors: ['prize' => ['A prize_id or prize_slug must be provided in meta']],
+                recipient: $this->recipient,
+            );
+        }
+
+        // Resolve prize
+        $prize = $prizeId
+            ? \LaravelFunLab\Models\Prize::find($prizeId)
+            : \LaravelFunLab\Models\Prize::where('slug', $prizeSlug)->first();
+
+        if ($prize === null) {
+            return AwardResult::failure(
+                type: $typeValue,
+                message: 'Prize not found',
+                errors: ['prize' => ['The specified prize does not exist']],
+                recipient: $this->recipient,
+            );
+        }
+
+        // Create prize grant
+        $prizeGrant = \LaravelFunLab\Models\PrizeGrant::create([
+            'prize_id' => $prize->id,
             'awardable_type' => get_class($this->recipient),
             'awardable_id' => $this->recipient->getKey(),
-            'type' => $typeValue,
-            'amount' => $this->amount,
-            'reason' => $this->reason,
-            'source' => $this->source,
+            'status' => 'pending',
             'meta' => array_merge($this->meta, [
-                'prize_pending_integration' => true,
+                'reason' => $this->reason,
+                'source' => $this->source,
             ]),
+            'granted_at' => now(),
         ]);
+
+        // Update profile prize count
+        $profile = $this->recipient->profile ?? $this->recipient->getProfile();
+        $profile->increment('prize_count');
 
         return AwardResult::success(
             type: $typeValue,
-            award: $award,
+            award: $prizeGrant,
             recipient: $this->recipient,
-            message: 'Prize awarded to recipient',
+            message: "Prize '{$prize->name}' awarded to recipient",
             meta: [
-                'note' => 'Full prize system coming in Story #9',
+                'prize_id' => $prize->id,
+                'prize_slug' => $prize->slug,
+                'prize_name' => $prize->name,
+                'grant_id' => $prizeGrant->id,
+            ],
+        );
+    }
+
+    /**
+     * Grant XP to a GamedMetric bucket.
+     *
+     * Uses the GamedMetricService to award XP and handle level progression.
+     */
+    protected function grantGamedMetricXp(): AwardResult
+    {
+        $typeValue = $this->getTypeValue();
+
+        // Validate GamedMetric is active
+        if (! $this->gamedMetric->active) {
+            return AwardResult::failure(
+                type: $typeValue,
+                message: "GamedMetric '{$this->gamedMetric->slug}' is not active",
+                errors: ['gamed_metric' => ['This GamedMetric is currently inactive']],
+                recipient: $this->recipient,
+            );
+        }
+
+        // Use the GamedMetricService to award XP
+        $gamedMetricService = app(\LaravelFunLab\Services\GamedMetricService::class);
+        $profileMetric = $gamedMetricService->awardXp(
+            $this->recipient,
+            $this->gamedMetric,
+            (int) ($this->amount ?? 1)
+        );
+
+        return AwardResult::success(
+            type: $typeValue,
+            award: $profileMetric,
+            recipient: $this->recipient,
+            message: "Awarded {$this->amount} XP to '{$this->gamedMetric->name}'",
+            meta: [
+                'gamed_metric_id' => $this->gamedMetric->id,
+                'gamed_metric_slug' => $this->gamedMetric->slug,
+                'total_xp' => $profileMetric->total_xp,
+                'current_level' => $profileMetric->current_level,
+                'reason' => $this->reason,
+                'source' => $this->source,
             ],
         );
     }
@@ -440,7 +516,7 @@ class AwardBuilder
      */
     protected function recipientIsAwardable(): bool
     {
-        return method_exists($this->recipient, 'awards')
+        return method_exists($this->recipient, 'profile')
             && method_exists($this->recipient, 'achievementGrants');
     }
 

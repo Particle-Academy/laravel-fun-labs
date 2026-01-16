@@ -21,7 +21,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property bool $active
  * @property \Illuminate\Support\Carbon $created_at
  * @property \Illuminate\Support\Carbon $updated_at
- * @property-read \Illuminate\Database\Eloquent\Collection<int, UserGamedMetric> $userMetrics
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, ProfileMetric> $profileMetrics
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, MetricLevel> $levels
  */
 class GamedMetric extends Model
 {
@@ -59,13 +60,23 @@ class GamedMetric extends Model
     }
 
     /**
-     * Get all user metrics for this GamedMetric.
+     * Get all profile metrics for this GamedMetric.
      *
-     * @return HasMany<UserGamedMetric, $this>
+     * @return HasMany<ProfileMetric, $this>
      */
-    public function userMetrics(): HasMany
+    public function profileMetrics(): HasMany
     {
-        return $this->hasMany(UserGamedMetric::class);
+        return $this->hasMany(ProfileMetric::class);
+    }
+
+    /**
+     * Get all levels for this GamedMetric.
+     *
+     * @return HasMany<MetricLevel, $this>
+     */
+    public function levels(): HasMany
+    {
+        return $this->hasMany(MetricLevel::class)->orderBy('level');
     }
 
     /**
@@ -87,4 +98,3 @@ class GamedMetric extends Model
         return static::where('slug', $slug)->first();
     }
 }
-

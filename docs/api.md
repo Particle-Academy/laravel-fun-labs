@@ -29,31 +29,32 @@ use LaravelFunLab\Facades\LFL;
 Start building an award operation with the fluent API.
 
 ```php
-LFL::award('points')->to($user)->amount(50)->grant();
-LFL::award(AwardType::Achievement)->to($user)->achievement('first-login')->grant();
+LFL::award('achievement')->to($user)->achievement('first-login')->grant();
+LFL::award('prize')->to($user)->withMeta(['prize_slug' => 'premium'])->grant();
 ```
 
 **Parameters:**
-- `$type` - Award type: `'points'`, `'achievement'`, `'prize'`, `'badge'`, or custom type
+- `$type` - Award type: `'achievement'`, `'prize'`, or a GamedMetric slug
 
 **Returns:** `AwardBuilder` instance
 
-#### `awardPoints(Model $recipient, int|float $amount = 1, ?string $reason = null, ?string $source = null, array $meta = []): AwardResult`
+#### `awardGamedMetric(Model $recipient, string|GamedMetric $gamedMetric, int $amount): ProfileMetric`
 
-Quick method to award points.
+Award XP to a specific GamedMetric.
 
 ```php
-LFL::awardPoints($user, 100, 'task completion', 'task-system');
+$profileMetric = LFL::awardGamedMetric($user, 'combat-xp', 50);
+echo $profileMetric->total_xp; // 50
 ```
 
 **Parameters:**
 - `$recipient` - Model instance with `Awardable` trait
-- `$amount` - Points to award (defaults to config default)
-- `$reason` - Reason for the award
-- `$source` - Source identifier
-- `$meta` - Additional metadata array
+- `$gamedMetric` - GamedMetric slug or model instance
+- `$amount` - XP amount to award
 
-**Returns:** `AwardResult`
+**Returns:** `ProfileMetric` - The updated profile metric record
+
+**Throws:** `InvalidArgumentException` if GamedMetric not found or inactive
 
 #### `grantAchievement(Model $recipient, string $achievementSlug, ?string $reason = null, ?string $source = null, array $meta = []): AwardResult`
 
@@ -91,6 +92,28 @@ LFL::awardBadge($user, 'early adopter', 'admin');
 ```
 
 **Returns:** `AwardResult`
+
+### GamedMetric Methods
+
+#### `awardGamedMetric(Model $recipient, string|GamedMetric $gamedMetric, int $amount): UserGamedMetric`
+
+Award XP to a specific GamedMetric (XP bucket). Automatically checks level progression and grants achievements attached to reached levels.
+
+```php
+// Award combat XP by slug
+$userMetric = LFL::awardGamedMetric($user, 'combat-xp', 100);
+
+// Award using GamedMetric model
+$combatMetric = GamedMetric::findBySlug('combat-xp');
+$userMetric = LFL::awardGamedMetric($user, $combatMetric, 50);
+```
+
+**Parameters:**
+- `$recipient` - Model instance with `Awardable` trait
+- `$gamedMetric` - GamedMetric slug string or model instance
+- `$amount` - XP amount to award
+
+**Returns:** `UserGamedMetric` - The updated user metric record
 
 ### Achievement Setup
 
@@ -702,6 +725,230 @@ Represents an event log entry for analytics.
 - `source` - Source identifier
 - `context` - Context JSON
 - `occurred_at` - Event timestamp
+
+### GamedMetric
+
+Represents an independent XP category (XP bucket) for tracking accumulated experience separately.
+
+**Properties:**
+- `id` - GamedMetric ID
+- `name` - Display name (e.g., "Combat XP")
+- `slug` - Unique slug identifier (e.g., "combat-xp")
+- `description` - Optional description
+- `icon` - Icon identifier
+- `active` - Whether the metric is active
+- `created_at` - Creation timestamp
+- `updated_at` - Last update timestamp
+
+**Methods:**
+- `findBySlug(string $slug): ?GamedMetric` - Find a GamedMetric by slug
+
+### MetricLevel
+
+Represents a level threshold for a GamedMetric. When a user reaches the XP threshold, they progress to this level.
+
+**Properties:**
+- `id` - MetricLevel ID
+- `gamed_metric_id` - Parent GamedMetric ID
+- `level` - Level number (1, 2, 3, etc.)
+- `xp_threshold` - XP required to reach this level
+- `name` - Level name (e.g., "Novice Fighter")
+- `description` - Optional description
+- `created_at` - Creation timestamp
+- `updated_at` - Last update timestamp
+
+**Relationships:**
+- `gamedMetric()` - BelongsTo GamedMetric
+- `achievements()` - BelongsToMany Achievement (achievements auto-granted when level is reached)
+
+**Methods:**
+- `isReached(int $xp): bool` - Check if the given XP reaches this level threshold
+
+### MetricLevelGroup
+
+Combines multiple GamedMetrics to create composite leveling systems (e.g., "Total Player Level" combining Combat + Magic + Crafting XP).
+
+**Properties:**
+- `id` - MetricLevelGroup ID
+- `name` - Display name
+- `slug` - Unique slug identifier
+- `description` - Optional description
+- `created_at` - Creation timestamp
+- `updated_at` - Last update timestamp
+
+**Relationships:**
+- `metrics()` - HasMany MetricLevelGroupMetric (the GamedMetrics in this group with weights)
+- `levels()` - HasMany MetricLevelGroupLevel (level thresholds for combined XP)
+
+**Methods:**
+- `findBySlug(string $slug): ?MetricLevelGroup` - Find a group by slug
+
+### MetricLevelGroupMetric
+
+Pivot model linking a GamedMetric to a MetricLevelGroup with a weight multiplier.
+
+**Properties:**
+- `id` - ID
+- `metric_level_group_id` - Parent group ID
+- `gamed_metric_id` - GamedMetric ID
+- `weight` - Weight multiplier (e.g., 1.0 for full weight, 0.5 for half)
+
+### MetricLevelGroupLevel
+
+Represents a level threshold for a MetricLevelGroup based on combined weighted XP.
+
+**Properties:**
+- `id` - MetricLevelGroupLevel ID
+- `metric_level_group_id` - Parent group ID
+- `level` - Level number
+- `xp_threshold` - Combined XP required to reach this level
+- `name` - Level name
+- `description` - Optional description
+
+**Relationships:**
+- `achievements()` - BelongsToMany Achievement (achievements auto-granted when group level is reached)
+
+### UserGamedMetric
+
+Tracks a user's accumulated XP and current level for a specific GamedMetric.
+
+**Properties:**
+- `id` - ID
+- `awardable_type` - User model type
+- `awardable_id` - User model ID
+- `gamed_metric_id` - GamedMetric ID
+- `total_xp` - Total accumulated XP
+- `current_level` - Current level number
+- `created_at` - Creation timestamp
+- `updated_at` - Last update timestamp
+
+**Methods:**
+- `addXp(int $amount): void` - Add XP to total
+- `setLevel(int $level): void` - Update current level
+
+## Services
+
+### MetricLevelService
+
+Service for managing level progression within individual GamedMetrics.
+
+```php
+use LaravelFunLab\Services\MetricLevelService;
+
+$levelService = app(MetricLevelService::class);
+```
+
+#### `getCurrentLevel(Model $awardable, string|GamedMetric $gamedMetric): int`
+
+Get the current level for a user in a specific GamedMetric.
+
+```php
+$level = $levelService->getCurrentLevel($user, 'combat-xp');
+// Returns: 3
+```
+
+#### `getNextLevelThreshold(Model $awardable, string|GamedMetric $gamedMetric): ?int`
+
+Get the XP threshold for the next level.
+
+```php
+$threshold = $levelService->getNextLevelThreshold($user, 'combat-xp');
+// Returns: 500 (or null if max level reached)
+```
+
+#### `getProgressPercentage(Model $awardable, string|GamedMetric $gamedMetric): float`
+
+Get progress percentage towards the next level (0-100).
+
+```php
+$progress = $levelService->getProgressPercentage($user, 'combat-xp');
+// Returns: 65.5
+```
+
+#### `checkProgression(UserGamedMetric $userMetric): array`
+
+Check and update level progression after XP is awarded. Returns information about levels unlocked.
+
+```php
+$result = $levelService->checkProgression($userMetric);
+// Returns: [
+//     'level_reached' => true,
+//     'new_level' => 4,
+//     'levels_unlocked' => [MetricLevel, MetricLevel]
+// ]
+```
+
+### MetricLevelGroupService
+
+Service for managing composite level progression across multiple GamedMetrics.
+
+```php
+use LaravelFunLab\Services\MetricLevelGroupService;
+
+$groupService = app(MetricLevelGroupService::class);
+```
+
+#### `getTotalXp(Model $awardable, string|MetricLevelGroup $group): int`
+
+Get total combined weighted XP from all GamedMetrics in the group.
+
+```php
+$totalXp = $groupService->getTotalXp($user, 'total-player-level');
+// Returns: 1500
+```
+
+#### `getCurrentLevel(Model $awardable, string|MetricLevelGroup $group): int`
+
+Get current level based on combined XP.
+
+```php
+$level = $groupService->getCurrentLevel($user, 'total-player-level');
+// Returns: 5
+```
+
+#### `getNextLevelThreshold(Model $awardable, string|MetricLevelGroup $group): ?int`
+
+Get the XP threshold for the next group level.
+
+```php
+$threshold = $groupService->getNextLevelThreshold($user, 'total-player-level');
+// Returns: 2000
+```
+
+#### `getProgressPercentage(Model $awardable, string|MetricLevelGroup $group): float`
+
+Get progress percentage towards the next group level.
+
+```php
+$progress = $groupService->getProgressPercentage($user, 'total-player-level');
+// Returns: 75.0
+```
+
+#### `getLevelInfo(Model $awardable, string|MetricLevelGroup $group): array`
+
+Get comprehensive level information in one call.
+
+```php
+$info = $groupService->getLevelInfo($user, 'total-player-level');
+// Returns: [
+//     'current_level' => 5,
+//     'total_xp' => 1500,
+//     'next_level_threshold' => 2000,
+//     'progress_percentage' => 75.0
+// ]
+```
+
+#### `checkProgression(Model $awardable, string|MetricLevelGroup $group): array`
+
+Check group level progression and auto-award achievements.
+
+```php
+$result = $groupService->checkProgression($user, 'total-player-level');
+// Returns: [
+//     'levels_unlocked' => [MetricLevelGroupLevel, ...],
+//     'achievements_awarded' => [Achievement, ...]
+// ]
+```
 
 ## Events
 

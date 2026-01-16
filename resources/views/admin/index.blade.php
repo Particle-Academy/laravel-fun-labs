@@ -26,15 +26,15 @@
             </div>
         </div>
         <div>
-            <h3 style="color: #999; font-size: 14px; margin-bottom: 5px;">Total Awards</h3>
+            <h3 style="color: #999; font-size: 14px; margin-bottom: 5px;">GamedMetrics</h3>
             <div style="font-size: 32px; font-weight: bold; color: #dc3545;">
-                {{ number_format($stats['total_awards']) }}
+                {{ number_format($stats['total_gamed_metrics']) }}
             </div>
         </div>
         <div>
-            <h3 style="color: #999; font-size: 14px; margin-bottom: 5px;">Points Awarded</h3>
+            <h3 style="color: #999; font-size: 14px; margin-bottom: 5px;">Total XP Awarded</h3>
             <div style="font-size: 32px; font-weight: bold; color: #6f42c1;">
-                {{ number_format((float) $stats['total_points_awarded'], 0) }}
+                {{ number_format((int) $stats['total_xp_awarded'], 0) }}
             </div>
         </div>
     </div>

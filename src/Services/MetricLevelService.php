@@ -9,7 +9,8 @@ use LaravelFunLab\Facades\LFL;
 use LaravelFunLab\Models\Achievement;
 use LaravelFunLab\Models\GamedMetric;
 use LaravelFunLab\Models\MetricLevel;
-use LaravelFunLab\Models\UserGamedMetric;
+use LaravelFunLab\Models\Profile;
+use LaravelFunLab\Models\ProfileMetric;
 
 /**
  * MetricLevelService
@@ -19,16 +20,16 @@ use LaravelFunLab\Models\UserGamedMetric;
 class MetricLevelService
 {
     /**
-     * Check and update level progression for a UserGamedMetric.
+     * Check and update level progression for a ProfileMetric.
      *
-     * @param  UserGamedMetric  $userMetric  The UserGamedMetric to check
+     * @param  ProfileMetric  $profileMetric  The ProfileMetric to check
      * @return array<string, mixed> Array with 'level_reached' (bool), 'new_level' (int|null), 'levels_unlocked' (array)
      */
-    public function checkProgression(UserGamedMetric $userMetric): array
+    public function checkProgression(ProfileMetric $profileMetric): array
     {
-        $metric = $userMetric->gamedMetric;
-        $totalXp = $userMetric->total_xp;
-        $currentLevel = $userMetric->current_level;
+        $metric = $profileMetric->gamedMetric;
+        $totalXp = $profileMetric->total_xp;
+        $currentLevel = $profileMetric->current_level;
 
         // Get all levels for this metric, ordered by level
         $levels = MetricLevel::forMetric($metric->id)
@@ -48,12 +49,12 @@ class MetricLevelService
 
         // Update current level if a new level was reached
         if ($newLevel !== null) {
-            $userMetric->setLevel($newLevel);
+            $profileMetric->setLevel($newLevel);
 
             // Auto-award achievements attached to unlocked levels
             foreach ($levelsUnlocked as $level) {
                 $achievements = $level->achievements()->active()->get();
-                $awardable = $userMetric->awardable;
+                $awardable = $profileMetric->profile->awardable;
 
                 foreach ($achievements as $achievement) {
                     // Only award if the achievement is for this awardable type or universal
@@ -103,16 +104,23 @@ class MetricLevelService
             return 1;
         }
 
-        $userMetric = UserGamedMetric::where('awardable_type', get_class($awardable))
+        $profile = Profile::where('awardable_type', get_class($awardable))
             ->where('awardable_id', $awardable->getKey())
-            ->where('gamed_metric_id', $metric->id)
             ->first();
 
-        if ($userMetric === null) {
+        if ($profile === null) {
             return 1;
         }
 
-        return $userMetric->current_level;
+        $profileMetric = ProfileMetric::where('profile_id', $profile->id)
+            ->where('gamed_metric_id', $metric->id)
+            ->first();
+
+        if ($profileMetric === null) {
+            return 1;
+        }
+
+        return $profileMetric->current_level;
     }
 
     /**
@@ -134,12 +142,15 @@ class MetricLevelService
             return null;
         }
 
-        $userMetric = UserGamedMetric::where('awardable_type', get_class($awardable))
+        $profile = Profile::where('awardable_type', get_class($awardable))
             ->where('awardable_id', $awardable->getKey())
-            ->where('gamed_metric_id', $metric->id)
             ->first();
 
-        $currentLevel = $userMetric?->current_level ?? 1;
+        $profileMetric = $profile ? ProfileMetric::where('profile_id', $profile->id)
+            ->where('gamed_metric_id', $metric->id)
+            ->first() : null;
+
+        $currentLevel = $profileMetric?->current_level ?? 1;
 
         $nextLevel = MetricLevel::forMetric($metric->id)
             ->where('level', '>', $currentLevel)
@@ -168,17 +179,24 @@ class MetricLevelService
             return 0.0;
         }
 
-        $userMetric = UserGamedMetric::where('awardable_type', get_class($awardable))
+        $profile = Profile::where('awardable_type', get_class($awardable))
             ->where('awardable_id', $awardable->getKey())
-            ->where('gamed_metric_id', $metric->id)
             ->first();
 
-        if ($userMetric === null) {
+        if ($profile === null) {
             return 0.0;
         }
 
-        $currentXp = $userMetric->total_xp;
-        $currentLevel = $userMetric->current_level;
+        $profileMetric = ProfileMetric::where('profile_id', $profile->id)
+            ->where('gamed_metric_id', $metric->id)
+            ->first();
+
+        if ($profileMetric === null) {
+            return 0.0;
+        }
+
+        $currentXp = $profileMetric->total_xp;
+        $currentLevel = $profileMetric->current_level;
 
         // Get current level threshold
         $currentLevelThreshold = MetricLevel::forMetric($metric->id)
@@ -203,4 +221,3 @@ class MetricLevelService
         return min(100.0, ($progressXp / $requiredXp) * 100);
     }
 }
-

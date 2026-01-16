@@ -7,8 +7,9 @@ use LaravelFunLab\Contracts\AwardEngineContract;
 use LaravelFunLab\Contracts\LeaderboardServiceContract;
 use LaravelFunLab\Enums\AwardType;
 use LaravelFunLab\Facades\LFL;
+use LaravelFunLab\Models\Achievement;
+use LaravelFunLab\Models\GamedMetric;
 use LaravelFunLab\Pipelines\AwardValidationPipeline;
-use LaravelFunLab\Registries\AwardTypeRegistry;
 use LaravelFunLab\Services\AwardEngine;
 use LaravelFunLab\Tests\Fixtures\User;
 
@@ -109,87 +110,16 @@ describe('Macro Support', function () {
     });
 });
 
-describe('Custom Award Type Registration', function () {
-    beforeEach(function () {
-        AwardTypeRegistry::flush();
-    });
-
-    it('can register a custom award type', function () {
-        AwardTypeRegistry::register('coins', 'Coins', 'coin', true, 100);
-
-        expect(AwardTypeRegistry::isRegistered('coins'))->toBeTrue();
-    });
-
-    it('can register multiple custom award types', function () {
-        AwardTypeRegistry::registerMany([
-            'coins' => ['name' => 'Coins', 'icon' => 'coin', 'cumulative' => true],
-            'stars' => ['name' => 'Stars', 'icon' => 'star', 'cumulative' => true],
-        ]);
-
-        expect(AwardTypeRegistry::isRegistered('coins'))->toBeTrue()
-            ->and(AwardTypeRegistry::isRegistered('stars'))->toBeTrue();
-    });
-
-    it('can get metadata for registered custom type', function () {
-        AwardTypeRegistry::register('coins', 'Coins', 'coin', true, 100);
-
-        $metadata = AwardTypeRegistry::getMetadata('coins');
-
-        expect($metadata)->toBeArray()
-            ->and($metadata['name'])->toBe('Coins')
-            ->and($metadata['icon'])->toBe('coin')
-            ->and($metadata['cumulative'])->toBeTrue()
-            ->and($metadata['default_amount'])->toBe(100);
-    });
-
-    it('can award custom award type', function () {
-        AwardTypeRegistry::register('coins', 'Coins', 'coin', true, 100);
-
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        $result = LFL::award('coins')
-            ->to($user)
-            ->amount(50)
-            ->for('test')
-            ->grant();
-
-        expect($result->succeeded())->toBeTrue()
-            ->and($result->award->type)->toBe('coins')
-            ->and((float) $result->award->amount)->toBe(50.0);
-    });
-
-    it('throws exception for unregistered custom type', function () {
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        expect(fn () => LFL::award('unregistered-type')->to($user)->grant())
-            ->toThrow(\InvalidArgumentException::class);
-    });
-
-    it('uses default amount from registry for custom type', function () {
-        AwardTypeRegistry::register('coins', 'Coins', 'coin', true, 200);
-
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        $result = LFL::award('coins')
-            ->to($user)
-            ->for('test')
-            ->grant();
-
-        expect($result->succeeded())->toBeTrue()
-            ->and((float) $result->award->amount)->toBe(200.0);
-    });
-
-    it('recognizes built-in types as registered', function () {
-        expect(AwardTypeRegistry::isRegistered('points'))->toBeTrue()
-            ->and(AwardTypeRegistry::isRegistered('achievement'))->toBeTrue()
-            ->and(AwardTypeRegistry::isRegistered('prize'))->toBeTrue()
-            ->and(AwardTypeRegistry::isRegistered('badge'))->toBeTrue();
-    });
-});
-
 describe('Award Validation Pipeline', function () {
     beforeEach(function () {
         AwardValidationPipeline::flush();
+
+        // Create an achievement for testing
+        Achievement::create([
+            'slug' => 'test-achievement',
+            'name' => 'Test Achievement',
+            'is_active' => true,
+        ]);
     });
 
     it('passes validation when no steps are registered', function () {
@@ -197,8 +127,8 @@ describe('Award Validation Pipeline', function () {
 
         $result = AwardValidationPipeline::validate(
             awardable: $user,
-            type: AwardType::Points,
-            amount: 100,
+            type: AwardType::Achievement,
+            amount: 0,
             reason: 'test',
         );
 
@@ -218,20 +148,20 @@ describe('Award Validation Pipeline', function () {
 
         $result = AwardValidationPipeline::validate(
             awardable: $user,
-            type: AwardType::Points,
-            amount: 100,
+            type: AwardType::Achievement,
+            amount: 0,
         );
 
         expect($result['valid'])->toBeTrue();
     });
 
     it('fails validation when a step returns invalid', function () {
-        AwardValidationPipeline::addStep(function ($awardable, $type, $amount) {
-            if ($amount > 50) {
+        AwardValidationPipeline::addStep(function ($awardable, $type, $amount, $reason) {
+            if ($reason === 'blocked') {
                 return [
                     'valid' => false,
-                    'message' => 'Amount too high',
-                    'errors' => ['amount' => ['Amount cannot exceed 50']],
+                    'message' => 'Award blocked by custom validation',
+                    'errors' => ['reason' => ['This reason is not allowed']],
                 ];
             }
 
@@ -242,13 +172,14 @@ describe('Award Validation Pipeline', function () {
 
         $result = AwardValidationPipeline::validate(
             awardable: $user,
-            type: AwardType::Points,
-            amount: 100,
+            type: AwardType::Achievement,
+            amount: 0,
+            reason: 'blocked',
         );
 
         expect($result['valid'])->toBeFalse()
-            ->and($result['message'])->toBe('Amount too high')
-            ->and($result['errors'])->toHaveKey('amount');
+            ->and($result['message'])->toBe('Award blocked by custom validation')
+            ->and($result['errors'])->toHaveKey('reason');
     });
 
     it('halts pipeline execution on first failure', function () {
@@ -270,20 +201,20 @@ describe('Award Validation Pipeline', function () {
 
         AwardValidationPipeline::validate(
             awardable: $user,
-            type: AwardType::Points,
-            amount: 100,
+            type: AwardType::Achievement,
+            amount: 0,
         );
 
         expect($callCount)->toBe(1); // Only first step should be called
     });
 
     it('prevents award when validation fails', function () {
-        AwardValidationPipeline::addStep(function ($awardable, $type, $amount) {
-            if ($amount > 1000) {
+        AwardValidationPipeline::addStep(function ($awardable, $type, $amount, $reason) {
+            if ($reason === 'blocked') {
                 return [
                     'valid' => false,
-                    'message' => 'Amount exceeds maximum',
-                    'errors' => ['amount' => ['Maximum amount is 1000']],
+                    'message' => 'Award blocked',
+                    'errors' => ['reason' => ['This reason is not allowed']],
                 ];
             }
 
@@ -292,14 +223,14 @@ describe('Award Validation Pipeline', function () {
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        $result = LFL::award('points')
+        $result = LFL::award('achievement')
             ->to($user)
-            ->amount(2000)
-            ->for('test')
+            ->achievement('test-achievement')
+            ->for('blocked')
             ->grant();
 
         expect($result->failed())->toBeTrue()
-            ->and($result->message)->toContain('Amount exceeds maximum');
+            ->and($result->message)->toContain('Award blocked');
     });
 
     it('allows award when validation passes', function () {
@@ -309,10 +240,10 @@ describe('Award Validation Pipeline', function () {
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        $result = LFL::award('points')
+        $result = LFL::award('achievement')
             ->to($user)
-            ->amount(100)
-            ->for('test')
+            ->achievement('test-achievement')
+            ->for('allowed')
             ->grant();
 
         expect($result->succeeded())->toBeTrue();
@@ -338,8 +269,8 @@ describe('Award Validation Pipeline', function () {
 
         AwardValidationPipeline::validate(
             awardable: $user,
-            type: AwardType::Points,
-            amount: 100,
+            type: AwardType::Achievement,
+            amount: 0,
             reason: 'test reason',
             source: 'test source',
             meta: ['key' => 'value'],
@@ -348,9 +279,81 @@ describe('Award Validation Pipeline', function () {
         expect($capturedParams)->not->toBeNull()
             ->and($capturedParams['awardable'])->toBe($user)
             ->and($capturedParams['type'])->toBeInstanceOf(AwardType::class)
-            ->and($capturedParams['amount'])->toBe(100)
+            ->and($capturedParams['amount'])->toBe(0)
             ->and($capturedParams['reason'])->toBe('test reason')
             ->and($capturedParams['source'])->toBe('test source')
             ->and($capturedParams['meta'])->toBe(['key' => 'value']);
+    });
+});
+
+describe('GamedMetric XP System', function () {
+    beforeEach(function () {
+        GamedMetric::create([
+            'slug' => 'combat-xp',
+            'name' => 'Combat XP',
+            'description' => 'Experience from combat',
+            'active' => true,
+        ]);
+
+        GamedMetric::create([
+            'slug' => 'crafting-xp',
+            'name' => 'Crafting XP',
+            'description' => 'Experience from crafting',
+            'active' => true,
+        ]);
+    });
+
+    it('can award XP to different GamedMetrics', function () {
+        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+
+        $combatResult = LFL::awardGamedMetric($user, 'combat-xp', 100);
+        $craftingResult = LFL::awardGamedMetric($user, 'crafting-xp', 50);
+
+        expect($combatResult->total_xp)->toBe(100)
+            ->and($craftingResult->total_xp)->toBe(50);
+    });
+
+    it('accumulates XP within the same GamedMetric', function () {
+        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+
+        LFL::awardGamedMetric($user, 'combat-xp', 100);
+        LFL::awardGamedMetric($user, 'combat-xp', 50);
+
+        $profile = $user->getProfile()->fresh();
+        $combatXp = $profile->getXpFor('combat-xp');
+
+        expect($combatXp)->toBe(150);
+    });
+
+    it('tracks total XP across all metrics', function () {
+        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+
+        LFL::awardGamedMetric($user, 'combat-xp', 100);
+        LFL::awardGamedMetric($user, 'crafting-xp', 50);
+
+        $profile = $user->getProfile()->fresh();
+
+        expect($profile->total_xp)->toBe(150);
+    });
+
+    it('throws exception for inactive GamedMetric', function () {
+        GamedMetric::create([
+            'slug' => 'inactive-xp',
+            'name' => 'Inactive XP',
+            'description' => 'This metric is inactive',
+            'active' => false,
+        ]);
+
+        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+
+        expect(fn () => LFL::awardGamedMetric($user, 'inactive-xp', 100))
+            ->toThrow(\InvalidArgumentException::class);
+    });
+
+    it('throws exception for non-existent GamedMetric', function () {
+        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+
+        expect(fn () => LFL::awardGamedMetric($user, 'non-existent', 100))
+            ->toThrow(\InvalidArgumentException::class);
     });
 });

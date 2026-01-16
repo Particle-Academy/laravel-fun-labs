@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use LaravelFunLab\Facades\LFL;
 use LaravelFunLab\Models\Achievement;
+use LaravelFunLab\Models\GamedMetric;
 use LaravelFunLab\Models\Prize;
 use LaravelFunLab\Models\Profile;
 use LaravelFunLab\Tests\Fixtures\User;
@@ -47,8 +48,8 @@ describe('Web UI Routes', function () {
             $profile1 = $user1->getProfile();
             $profile2 = $user2->getProfile();
 
-            $profile1->update(['total_points' => 200]);
-            $profile2->update(['total_points' => 100]);
+            $profile1->update(['total_xp' => 200]);
+            $profile2->update(['total_xp' => 100]);
 
             $response = $this->get('/lfl/leaderboards/'.urlencode(User::class));
 
@@ -77,7 +78,7 @@ describe('Web UI Routes', function () {
             $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
             $profile = $user->getProfile();
             $profile->update([
-                'total_points' => 150,
+                'total_xp' => 150,
                 'achievement_count' => 3,
                 'prize_count' => 2,
             ]);
@@ -138,16 +139,24 @@ describe('Web UI Routes', function () {
         });
 
         it('displays analytics page', function () {
+            // Create a GamedMetric and award XP through it
+            $metric = GamedMetric::create([
+                'slug' => 'general-xp',
+                'name' => 'General XP',
+                'description' => 'General experience points',
+                'active' => true,
+            ]);
+
             $user = User::create(['name' => 'User', 'email' => 'user@example.com']);
             $user->getProfile();
 
-            LFL::awardPoints($user, 50);
+            LFL::awardGamedMetric($user, $metric, 50);
 
             $response = $this->get('/lfl/admin/analytics');
 
             $response->assertSuccessful()
                 ->assertViewIs('lfl::admin.analytics')
-                ->assertViewHas('awardsOverTime')
+                ->assertViewHas('xpOverTime')
                 ->assertViewHas('topEarners');
         });
 

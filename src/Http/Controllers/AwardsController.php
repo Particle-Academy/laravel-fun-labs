@@ -6,23 +6,24 @@ namespace LaravelFunLab\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use LaravelFunLab\Models\Award;
+use LaravelFunLab\Models\Profile;
+use LaravelFunLab\Models\ProfileMetric;
 
 /**
  * AwardsController
  *
- * API controller for retrieving award history for awardable entities.
- * Supports filtering by award type and pagination.
+ * API controller for retrieving XP and metrics for awardable entities.
+ * Returns ProfileMetrics (XP per GamedMetric) for a given profile.
  */
 class AwardsController extends Controller
 {
     /**
-     * Get award history for a specific awardable entity.
+     * Get XP metrics for a specific awardable entity.
      *
      * GET /awards/{type}/{id}
      *
      * Query parameters:
-     * - award_type: Filter by award type (e.g., 'points', 'badge') - optional
+     * - metric_slug: Filter by GamedMetric slug - optional
      * - per_page: Items per page - default: 15
      * - page: Page number - default: 1
      *
@@ -31,47 +32,70 @@ class AwardsController extends Controller
      */
     public function index(string $type, int $id, Request $request): JsonResponse
     {
-        $query = Award::query()
-            ->where('awardable_type', $type)
+        // Find the profile for this awardable
+        $profile = Profile::where('awardable_type', $type)
             ->where('awardable_id', $id)
-            ->orderByDesc('created_at');
+            ->first();
 
-        // Filter by award type if provided
-        if ($request->has('award_type')) {
-            $query->ofType($request->input('award_type'));
+        if (! $profile) {
+            return response()->json([
+                'data' => [],
+                'profile' => null,
+                'meta' => [
+                    'total' => 0,
+                ],
+            ]);
+        }
+
+        $query = ProfileMetric::query()
+            ->where('profile_id', $profile->id)
+            ->with('gamedMetric')
+            ->orderByDesc('total_xp');
+
+        // Filter by metric slug if provided
+        if ($request->has('metric_slug')) {
+            $query->whereHas('gamedMetric', function ($q) use ($request) {
+                $q->where('slug', $request->input('metric_slug'));
+            });
         }
 
         $perPage = (int) $request->input('per_page', 15);
-        $awards = $query->paginate($perPage);
+        $metrics = $query->paginate($perPage);
 
         return response()->json([
-            'data' => $awards->map(function (Award $award) {
+            'data' => $metrics->map(function (ProfileMetric $metric) {
                 return [
-                    'id' => $award->id,
-                    'awardable_type' => $award->awardable_type,
-                    'awardable_id' => $award->awardable_id,
-                    'type' => $award->type,
-                    'amount' => (float) $award->amount,
-                    'reason' => $award->reason,
-                    'source' => $award->source,
-                    'meta' => $award->meta,
-                    'created_at' => $award->created_at->toIso8601String(),
-                    'updated_at' => $award->updated_at->toIso8601String(),
+                    'id' => $metric->id,
+                    'profile_id' => $metric->profile_id,
+                    'gamed_metric_id' => $metric->gamed_metric_id,
+                    'gamed_metric_slug' => $metric->gamedMetric?->slug,
+                    'gamed_metric_name' => $metric->gamedMetric?->name,
+                    'total_xp' => $metric->total_xp,
+                    'current_level' => $metric->current_level,
+                    'created_at' => $metric->created_at->toIso8601String(),
+                    'updated_at' => $metric->updated_at->toIso8601String(),
                 ];
             }),
+            'profile' => [
+                'id' => $profile->id,
+                'total_xp' => $profile->total_xp,
+                'achievement_count' => $profile->achievement_count,
+                'prize_count' => $profile->prize_count,
+                'is_opted_in' => $profile->is_opted_in,
+            ],
             'meta' => [
-                'current_page' => $awards->currentPage(),
-                'from' => $awards->firstItem(),
-                'last_page' => $awards->lastPage(),
-                'per_page' => $awards->perPage(),
-                'to' => $awards->lastItem(),
-                'total' => $awards->total(),
+                'current_page' => $metrics->currentPage(),
+                'from' => $metrics->firstItem(),
+                'last_page' => $metrics->lastPage(),
+                'per_page' => $metrics->perPage(),
+                'to' => $metrics->lastItem(),
+                'total' => $metrics->total(),
             ],
             'links' => [
-                'first' => $awards->url(1),
-                'last' => $awards->url($awards->lastPage()),
-                'prev' => $awards->previousPageUrl(),
-                'next' => $awards->nextPageUrl(),
+                'first' => $metrics->url(1),
+                'last' => $metrics->url($metrics->lastPage()),
+                'prev' => $metrics->previousPageUrl(),
+                'next' => $metrics->nextPageUrl(),
             ],
         ]);
     }

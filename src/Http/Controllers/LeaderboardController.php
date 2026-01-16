@@ -22,7 +22,7 @@ class LeaderboardController extends Controller
      * GET /leaderboards/{type}
      *
      * Query parameters:
-     * - by: Sort metric ('points', 'achievements', 'prizes') - default: 'points'
+     * - by: Sort metric ('xp', 'achievements', 'prizes') - default: 'xp'
      * - period: Time period ('daily', 'weekly', 'monthly', 'all-time') - default: 'all-time'
      * - per_page: Items per page - default: 15
      * - page: Page number - default: 1
@@ -33,7 +33,7 @@ class LeaderboardController extends Controller
     {
         $builder = LFL::leaderboard()
             ->for($type)
-            ->by($request->input('by', 'points'))
+            ->by($request->input('by', 'xp'))
             ->period($request->input('period', 'all-time'))
             ->perPage((int) $request->input('per_page', 15))
             ->page((int) $request->input('page', 1));
@@ -47,7 +47,7 @@ class LeaderboardController extends Controller
                     'id' => $profile->id,
                     'awardable_type' => $profile->awardable_type,
                     'awardable_id' => $profile->awardable_id,
-                    'total_points' => (float) $profile->total_points,
+                    'total_xp' => (int) $profile->total_xp,
                     'achievement_count' => $profile->achievement_count,
                     'prize_count' => $profile->prize_count,
                     'last_activity_at' => $profile->last_activity_at?->toIso8601String(),

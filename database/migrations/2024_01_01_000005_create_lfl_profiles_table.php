@@ -41,7 +41,7 @@ return new class extends Migration
             $table->json('visibility_settings')->nullable();
 
             // Aggregated values (cached for performance)
-            $table->decimal('total_points', 12, 2)->default(0);
+            $table->unsignedBigInteger('total_xp')->default(0);
             $table->unsignedInteger('achievement_count')->default(0);
             $table->unsignedInteger('prize_count')->default(0);
 
@@ -55,7 +55,7 @@ return new class extends Migration
 
             // Indexes for common queries
             $table->index('is_opted_in');
-            $table->index('total_points');
+            $table->index('total_xp');
             $table->index('last_activity_at');
         });
     }

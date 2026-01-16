@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace LaravelFunLab\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
  * Profile Model
  *
- * Stores engagement profiles for awardable models with opt-in/opt-out logic,
+ * Stores engagement profiles for any model (User, Team, etc.) with opt-in/opt-out logic,
  * display preferences, visibility settings, and aggregated engagement metrics.
+ *
+ * Profiles are the central entity for gamification - they receive XP (via ProfileMetrics),
+ * achievements, and prizes. Any model can have a Profile by using the Awardable trait.
  *
  * @property int $id
  * @property string $awardable_type
@@ -19,13 +23,14 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
  * @property bool $is_opted_in
  * @property array<string, mixed>|null $display_preferences
  * @property array<string, mixed>|null $visibility_settings
- * @property float $total_points
+ * @property int $total_xp
  * @property int $achievement_count
  * @property int $prize_count
  * @property \Illuminate\Support\Carbon|null $last_activity_at
  * @property \Illuminate\Support\Carbon $created_at
  * @property \Illuminate\Support\Carbon $updated_at
  * @property-read Model $awardable
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, ProfileMetric> $metrics
  */
 class Profile extends Model
 {
@@ -40,7 +45,7 @@ class Profile extends Model
         'is_opted_in',
         'display_preferences',
         'visibility_settings',
-        'total_points',
+        'total_xp',
         'achievement_count',
         'prize_count',
         'last_activity_at',
@@ -65,7 +70,7 @@ class Profile extends Model
             'is_opted_in' => 'boolean',
             'display_preferences' => 'array',
             'visibility_settings' => 'array',
-            'total_points' => 'decimal:2',
+            'total_xp' => 'integer',
             'achievement_count' => 'integer',
             'prize_count' => 'integer',
             'last_activity_at' => 'datetime',
@@ -80,6 +85,16 @@ class Profile extends Model
     public function awardable(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /**
+     * Get all profile metrics (XP per GamedMetric).
+     *
+     * @return HasMany<ProfileMetric, $this>
+     */
+    public function metrics(): HasMany
+    {
+        return $this->hasMany(ProfileMetric::class);
     }
 
     /**
@@ -116,14 +131,14 @@ class Profile extends Model
     }
 
     /**
-     * Scope to order by total points (descending).
+     * Scope to order by total XP (descending).
      *
      * @param  \Illuminate\Database\Eloquent\Builder<Profile>  $query
      * @return \Illuminate\Database\Eloquent\Builder<Profile>
      */
-    public function scopeOrderedByPoints($query)
+    public function scopeOrderedByXp($query)
     {
-        return $query->orderByDesc('total_points');
+        return $query->orderByDesc('total_xp');
     }
 
     /**
@@ -167,25 +182,58 @@ class Profile extends Model
     }
 
     /**
-     * Calculate total points from all awards.
+     * Calculate total XP from all profile metrics.
      *
-     * @param  string|null  $type  Optional award type to filter by (e.g., 'points')
+     * @param  string|null  $metricSlug  Optional GamedMetric slug to filter by
      */
-    public function calculateTotalPoints(?string $type = 'points'): float
+    public function calculateTotalXp(?string $metricSlug = null): int
     {
-        $awardable = $this->awardable;
+        $query = $this->metrics();
 
-        if ($awardable === null || ! method_exists($awardable, 'awards')) {
-            return 0.0;
+        if ($metricSlug !== null) {
+            $metric = GamedMetric::findBySlug($metricSlug);
+            if ($metric) {
+                $query->where('gamed_metric_id', $metric->id);
+            }
         }
 
-        $query = $awardable->awards();
+        return (int) $query->sum('total_xp');
+    }
 
-        if ($type !== null) {
-            $query->where('type', $type);
+    /**
+     * Get XP for a specific GamedMetric.
+     */
+    public function getXpFor(string|GamedMetric $gamedMetric): int
+    {
+        $metric = $gamedMetric instanceof GamedMetric
+            ? $gamedMetric
+            : GamedMetric::findBySlug($gamedMetric);
+
+        if (! $metric) {
+            return 0;
         }
 
-        return (float) $query->sum('amount');
+        $profileMetric = $this->metrics()->where('gamed_metric_id', $metric->id)->first();
+
+        return $profileMetric?->total_xp ?? 0;
+    }
+
+    /**
+     * Get current level for a specific GamedMetric.
+     */
+    public function getLevelFor(string|GamedMetric $gamedMetric): int
+    {
+        $metric = $gamedMetric instanceof GamedMetric
+            ? $gamedMetric
+            : GamedMetric::findBySlug($gamedMetric);
+
+        if (! $metric) {
+            return 1;
+        }
+
+        $profileMetric = $this->metrics()->where('gamed_metric_id', $metric->id)->first();
+
+        return $profileMetric?->current_level ?? 1;
     }
 
     /**
@@ -203,39 +251,37 @@ class Profile extends Model
     }
 
     /**
-     * Calculate prize count from awards.
+     * Calculate prize count from prize grants.
      */
     public function calculatePrizeCount(): int
     {
         $awardable = $this->awardable;
 
-        if ($awardable === null || ! method_exists($awardable, 'awards')) {
+        if ($awardable === null || ! method_exists($awardable, 'prizeGrants')) {
             return 0;
         }
 
-        return $awardable->awards()
-            ->where('type', 'prize')
-            ->count();
+        return $awardable->prizeGrants()->count();
     }
 
     /**
-     * Recalculate all aggregated values from related awards and achievements.
+     * Recalculate all aggregated values from related metrics, achievements, and prizes.
      */
     public function recalculateAggregations(): bool
     {
         return $this->update([
-            'total_points' => $this->calculateTotalPoints(),
+            'total_xp' => $this->calculateTotalXp(),
             'achievement_count' => $this->calculateAchievementCount(),
             'prize_count' => $this->calculatePrizeCount(),
         ]);
     }
 
     /**
-     * Increment total points by the given amount.
+     * Increment total XP by the given amount.
      */
-    public function incrementPoints(float $amount): bool
+    public function incrementXp(int $amount): bool
     {
-        $this->increment('total_points', $amount);
+        $this->increment('total_xp', $amount);
 
         return true;
     }

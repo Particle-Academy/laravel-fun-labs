@@ -6,32 +6,33 @@ namespace LaravelFunLab\Services;
 
 use Illuminate\Database\Eloquent\Model;
 use LaravelFunLab\Models\GamedMetric;
-use LaravelFunLab\Models\UserGamedMetric;
-use LaravelFunLab\Services\MetricLevelService;
+use LaravelFunLab\Models\Profile;
+use LaravelFunLab\Models\ProfileMetric;
 
 /**
  * GamedMetricService
  *
- * Handles awarding XP to GamedMetrics and tracking user progress.
+ * Handles awarding XP to GamedMetrics and tracking profile progress.
  */
 class GamedMetricService
 {
     public function __construct(
         protected MetricLevelService $levelService
     ) {}
+
     /**
      * Award XP to a specific GamedMetric for an awardable entity.
      *
-     * @param  Model  $awardable  The entity receiving XP
+     * @param  Model  $awardable  The entity receiving XP (must use Awardable trait)
      * @param  string|GamedMetric  $gamedMetric  GamedMetric slug or model instance
      * @param  int  $amount  Amount of XP to award
-     * @return UserGamedMetric The updated UserGamedMetric record
+     * @return ProfileMetric The updated ProfileMetric record
      */
     public function awardXp(
         Model $awardable,
         string|GamedMetric $gamedMetric,
         int $amount
-    ): UserGamedMetric {
+    ): ProfileMetric {
         // Resolve GamedMetric
         $metric = $gamedMetric instanceof GamedMetric
             ? $gamedMetric
@@ -45,11 +46,13 @@ class GamedMetricService
             throw new \InvalidArgumentException("GamedMetric '{$metric->slug}' is not active.");
         }
 
-        // Get or create UserGamedMetric record
-        $userMetric = UserGamedMetric::firstOrCreate(
+        // Get or create Profile for the awardable
+        $profile = $this->getOrCreateProfile($awardable);
+
+        // Get or create ProfileMetric record
+        $profileMetric = ProfileMetric::firstOrCreate(
             [
-                'awardable_type' => get_class($awardable),
-                'awardable_id' => $awardable->getKey(),
+                'profile_id' => $profile->id,
                 'gamed_metric_id' => $metric->id,
             ],
             [
@@ -59,26 +62,49 @@ class GamedMetricService
         );
 
         // Add XP
-        $userMetric->addXp($amount);
-        $userMetric->refresh();
+        $profileMetric->addXp($amount);
+        $profileMetric->refresh();
+
+        // Update profile's total XP
+        $profile->incrementXp($amount);
+        $profile->touchActivity();
 
         // Check for level progression
-        $this->levelService->checkProgression($userMetric);
+        $this->levelService->checkProgression($profileMetric);
 
-        return $userMetric;
+        return $profileMetric;
     }
 
     /**
-     * Get the UserGamedMetric record for an awardable entity and GamedMetric.
+     * Get or create a Profile for an awardable entity.
+     */
+    protected function getOrCreateProfile(Model $awardable): Profile
+    {
+        return Profile::firstOrCreate(
+            [
+                'awardable_type' => get_class($awardable),
+                'awardable_id' => $awardable->getKey(),
+            ],
+            [
+                'is_opted_in' => true,
+                'total_xp' => 0,
+                'achievement_count' => 0,
+                'prize_count' => 0,
+            ]
+        );
+    }
+
+    /**
+     * Get the ProfileMetric record for an awardable entity and GamedMetric.
      *
      * @param  Model  $awardable  The entity
      * @param  string|GamedMetric  $gamedMetric  GamedMetric slug or model instance
-     * @return UserGamedMetric|null The UserGamedMetric record or null if not found
+     * @return ProfileMetric|null The ProfileMetric record or null if not found
      */
-    public function getUserMetric(
+    public function getProfileMetric(
         Model $awardable,
         string|GamedMetric $gamedMetric
-    ): ?UserGamedMetric {
+    ): ?ProfileMetric {
         $metric = $gamedMetric instanceof GamedMetric
             ? $gamedMetric
             : GamedMetric::findBySlug($gamedMetric);
@@ -87,8 +113,15 @@ class GamedMetricService
             return null;
         }
 
-        return UserGamedMetric::where('awardable_type', get_class($awardable))
+        $profile = Profile::where('awardable_type', get_class($awardable))
             ->where('awardable_id', $awardable->getKey())
+            ->first();
+
+        if (! $profile) {
+            return null;
+        }
+
+        return ProfileMetric::where('profile_id', $profile->id)
             ->where('gamed_metric_id', $metric->id)
             ->first();
     }
@@ -104,9 +137,9 @@ class GamedMetricService
         Model $awardable,
         string|GamedMetric $gamedMetric
     ): int {
-        $userMetric = $this->getUserMetric($awardable, $gamedMetric);
+        $profileMetric = $this->getProfileMetric($awardable, $gamedMetric);
 
-        return $userMetric?->total_xp ?? 0;
+        return $profileMetric?->total_xp ?? 0;
     }
 
     /**
@@ -120,9 +153,21 @@ class GamedMetricService
         Model $awardable,
         string|GamedMetric $gamedMetric
     ): int {
-        $userMetric = $this->getUserMetric($awardable, $gamedMetric);
+        $profileMetric = $this->getProfileMetric($awardable, $gamedMetric);
 
-        return $userMetric?->current_level ?? 1;
+        return $profileMetric?->current_level ?? 1;
+    }
+
+    /**
+     * Get the Profile for an awardable entity.
+     *
+     * @param  Model  $awardable  The entity
+     * @return Profile|null The Profile or null if not found
+     */
+    public function getProfile(Model $awardable): ?Profile
+    {
+        return Profile::where('awardable_type', get_class($awardable))
+            ->where('awardable_id', $awardable->getKey())
+            ->first();
     }
 }
-

@@ -6,26 +6,24 @@ namespace LaravelFunLab\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
- * UserGamedMetric Model
+ * ProfileMetric Model
  *
- * Tracks accumulated XP for each GamedMetric per awardable entity.
+ * Tracks accumulated XP for each GamedMetric per Profile.
  * Updated when XP is awarded to a specific metric.
  *
  * @property int $id
- * @property string $awardable_type
- * @property int $awardable_id
+ * @property int $profile_id
  * @property int $gamed_metric_id
  * @property int $total_xp
  * @property int $current_level
  * @property \Illuminate\Support\Carbon $created_at
  * @property \Illuminate\Support\Carbon $updated_at
- * @property-read Model $awardable
+ * @property-read Profile $profile
  * @property-read GamedMetric $gamedMetric
  */
-class UserGamedMetric extends Model
+class ProfileMetric extends Model
 {
     /**
      * The attributes that are mass assignable.
@@ -33,8 +31,7 @@ class UserGamedMetric extends Model
      * @var list<string>
      */
     protected $fillable = [
-        'awardable_type',
-        'awardable_id',
+        'profile_id',
         'gamed_metric_id',
         'total_xp',
         'current_level',
@@ -45,7 +42,7 @@ class UserGamedMetric extends Model
      */
     public function getTable(): string
     {
-        return config('lfl.table_prefix', 'lfl_').'user_gamed_metrics';
+        return config('lfl.table_prefix', 'lfl_').'profile_metrics';
     }
 
     /**
@@ -62,13 +59,13 @@ class UserGamedMetric extends Model
     }
 
     /**
-     * Get the awardable entity (User, Team, etc.).
+     * Get the Profile this metric belongs to.
      *
-     * @return MorphTo<Model, $this>
+     * @return BelongsTo<Profile, $this>
      */
-    public function awardable(): MorphTo
+    public function profile(): BelongsTo
     {
-        return $this->morphTo();
+        return $this->belongsTo(Profile::class);
     }
 
     /**
@@ -97,4 +94,3 @@ class UserGamedMetric extends Model
         $this->update(['current_level' => $level]);
     }
 }
-

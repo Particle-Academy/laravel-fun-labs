@@ -25,7 +25,7 @@ class LeaderboardController extends Controller
     {
         $builder = LFL::leaderboard()
             ->for($type)
-            ->by($request->input('by', 'points'))
+            ->by($request->input('by', 'xp'))
             ->period($request->input('period', 'all-time'))
             ->perPage((int) $request->input('per_page', 15))
             ->page((int) $request->input('page', 1));
@@ -35,7 +35,7 @@ class LeaderboardController extends Controller
         return view('lfl::leaderboard', [
             'leaderboard' => $leaderboard,
             'type' => $type,
-            'sortBy' => $request->input('by', 'points'),
+            'sortBy' => $request->input('by', 'xp'),
             'period' => $request->input('period', 'all-time'),
         ]);
     }

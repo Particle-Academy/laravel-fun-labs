@@ -18,13 +18,13 @@ use LaravelFunLab\Models\Profile;
  * with filtering, sorting, pagination, and opt-out exclusion.
  *
  * Usage:
- * LFL::leaderboard()->for(User::class)->by('points')->period('weekly')->get();
+ * LFL::leaderboard()->for(User::class)->by('xp')->period('weekly')->get();
  */
 class LeaderboardBuilder implements LeaderboardServiceContract
 {
     protected ?string $awardableType = null;
 
-    protected string $sortBy = 'points';
+    protected string $sortBy = 'xp';
 
     protected ?string $period = null;
 
@@ -50,12 +50,13 @@ class LeaderboardBuilder implements LeaderboardServiceContract
     /**
      * Sort leaderboard by metric.
      *
-     * @param  string  $metric  The metric to sort by: 'points', 'achievements', 'prizes'
+     * @param  string  $metric  The metric to sort by: 'xp', 'achievements', 'prizes', or 'points' (alias for xp)
      * @return $this
      */
     public function by(string $metric): self
     {
-        $this->sortBy = $metric;
+        // Map 'points' to 'xp' for backwards compatibility
+        $this->sortBy = $metric === 'points' ? 'xp' : $metric;
 
         return $this;
     }
@@ -200,8 +201,8 @@ class LeaderboardBuilder implements LeaderboardServiceContract
     /**
      * Apply time-based filtering to the query.
      *
-     * For time-based leaderboards, we need to join with awards and filter by created_at.
-     * This requires a more complex query that aggregates awards within the time period.
+     * For time-based leaderboards, we need to join with profile_metrics and filter by updated_at.
+     * This requires a more complex query that aggregates XP within the time period.
      *
      * @param  Builder<Profile>  $query
      * @return Builder<Profile>
@@ -214,23 +215,21 @@ class LeaderboardBuilder implements LeaderboardServiceContract
             return $query;
         }
 
-        // For time-based filtering, we need to calculate scores from awards within the period
-        // This requires joining with the awards table and aggregating
+        // For time-based filtering, we need to calculate scores from profile_metrics within the period
+        // This requires joining with the profile_metrics table and aggregating
         $profileTable = (new Profile)->getTable();
-        $awardTable = config('lfl.table_prefix', 'lfl_').'awards';
+        $metricsTable = config('lfl.table_prefix', 'lfl_').'profile_metrics';
 
         // Build a subquery to calculate period-specific scores
         return $query
             ->select($profileTable.'.*')
-            ->selectRaw('COALESCE(SUM('.$awardTable.'.amount), 0) as period_points')
-            ->leftJoin($awardTable, function ($join) use ($profileTable, $awardTable, $startDate) {
-                $join->on($profileTable.'.awardable_type', '=', $awardTable.'.awardable_type')
-                    ->on($profileTable.'.awardable_id', '=', $awardTable.'.awardable_id')
-                    ->where($awardTable.'.type', '=', 'points')
-                    ->where($awardTable.'.created_at', '>=', $startDate);
+            ->selectRaw('COALESCE(SUM('.$metricsTable.'.total_xp), 0) as period_xp')
+            ->leftJoin($metricsTable, function ($join) use ($profileTable, $metricsTable, $startDate) {
+                $join->on($profileTable.'.id', '=', $metricsTable.'.profile_id')
+                    ->where($metricsTable.'.updated_at', '>=', $startDate);
             })
             ->groupBy($profileTable.'.id')
-            ->havingRaw('COALESCE(SUM('.$awardTable.'.amount), 0) > 0');
+            ->havingRaw('COALESCE(SUM('.$metricsTable.'.total_xp), 0) > 0');
     }
 
     /**
@@ -254,22 +253,22 @@ class LeaderboardBuilder implements LeaderboardServiceContract
      */
     protected function applySorting(Builder $query): Builder
     {
-        // For time-based filtering, sort by period_points if it exists
+        // For time-based filtering, sort by period_xp if it exists
         if ($this->period !== null && $this->period !== 'all-time') {
             return match ($this->sortBy) {
-                'points' => $query->orderByDesc('period_points'),
+                'xp' => $query->orderByDesc('period_xp'),
                 'achievements' => $query->orderByDesc('achievement_count'),
                 'prizes' => $query->orderByDesc('prize_count'),
-                default => $query->orderByDesc('period_points'),
+                default => $query->orderByDesc('period_xp'),
             };
         }
 
         // For all-time leaderboards, use profile aggregates
         return match ($this->sortBy) {
-            'points' => $query->orderByDesc('total_points'),
+            'xp' => $query->orderByDesc('total_xp'),
             'achievements' => $query->orderByDesc('achievement_count'),
             'prizes' => $query->orderByDesc('prize_count'),
-            default => $query->orderByDesc('total_points'),
+            default => $query->orderByDesc('total_xp'),
         };
     }
 }

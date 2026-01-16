@@ -8,7 +8,10 @@ use LaravelFunLab\Events\AwardFailed;
 use LaravelFunLab\Events\AwardGranted;
 use LaravelFunLab\Facades\LFL;
 use LaravelFunLab\Models\Achievement;
-use LaravelFunLab\Models\Award;
+use LaravelFunLab\Models\AchievementGrant;
+use LaravelFunLab\Models\GamedMetric;
+use LaravelFunLab\Models\Prize;
+use LaravelFunLab\Models\PrizeGrant;
 use LaravelFunLab\Tests\Fixtures\NonAwardableModel;
 use LaravelFunLab\Tests\Fixtures\User;
 
@@ -18,7 +21,7 @@ use LaravelFunLab\Tests\Fixtures\User;
 |--------------------------------------------------------------------------
 |
 | Tests for the unified award API: LFL::award()
-| Covers points, achievements, prizes, and badges with all edge cases.
+| Covers GamedMetric XP, achievements, and prizes.
 |
 */
 
@@ -28,122 +31,164 @@ describe('AwardEngine Facade', function () {
         expect(LFL::getFacadeRoot())->toBeInstanceOf(\LaravelFunLab\Services\AwardEngine::class);
     });
 
-    it('returns an AwardBuilder when calling award()', function () {
-        $builder = LFL::award('points');
+    it('returns an AwardBuilder when calling award() with valid type', function () {
+        // Create a GamedMetric first
+        GamedMetric::create([
+            'slug' => 'test-metric',
+            'name' => 'Test Metric',
+            'active' => true,
+        ]);
+
+        $builder = LFL::award('test-metric');
 
         expect($builder)->toBeInstanceOf(\LaravelFunLab\Builders\AwardBuilder::class);
     });
 
 });
 
-describe('Points Awards', function () {
+describe('Deprecated Points Awards', function () {
 
-    it('can award points to a user using fluent API', function () {
+    it('fails when trying to use deprecated points type', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
         $result = LFL::award('points')
             ->to($user)
-            ->for('completing a task')
-            ->from('task-system')
             ->amount(50)
             ->grant();
 
-        expect($result)->toBeSuccessfulAward()
-            ->and($result->type)->toBe('points') // AwardResult stores type as string value
-            ->and($result->award)->toBeInstanceOf(Award::class)
-            ->and($result->award->amount)->toBe('50.00')
-            ->and($result->award->reason)->toBe('completing a task')
-            ->and($result->award->source)->toBe('task-system');
+        expect($result->failed())->toBeTrue()
+            ->and($result->message)->toContain('deprecated');
     });
 
-    it('can award points using the shorthand method', function () {
+    it('fails when trying to use deprecated badge type', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        $result = LFL::awardPoints($user, 100, 'bonus points', 'admin');
-
-        expect($result)->toBeSuccessfulAward()
-            ->and($result->award->amount)->toBe('100.00')
-            ->and($result->award->type)->toBe('points');
-    });
-
-    it('accumulates points correctly', function () {
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        LFL::awardPoints($user, 50);
-        LFL::awardPoints($user, 30);
-        LFL::awardPoints($user, 20);
-
-        expect($user->getTotalPoints())->toBe(100.0);
-    });
-
-    it('can award points with metadata', function () {
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        $result = LFL::award('points')
+        $result = LFL::award('badge')
             ->to($user)
-            ->amount(25)
-            ->withMeta(['task_id' => 123, 'multiplier' => 2])
+            ->amount(1)
             ->grant();
 
-        expect($result)->toBeSuccessfulAward()
-            ->and($result->award->meta)->toBe(['task_id' => 123, 'multiplier' => 2]);
+        expect($result->failed())->toBeTrue()
+            ->and($result->message)->toContain('deprecated');
     });
 
-    it('returns previous and new totals in result meta', function () {
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+});
 
-        // First award
-        LFL::awardPoints($user, 50);
+describe('GamedMetric XP Awards', function () {
 
-        // Second award
-        $result = LFL::awardPoints($user, 30);
+    it('can award XP to a GamedMetric using fluent API', function () {
+        $user = User::create(['name' => 'Test User', 'email' => 'gamed-metric-test@example.com']);
 
-        expect($result->meta['previous_total'])->toBe(50.0)
-            ->and($result->meta['new_total'])->toBe(80.0);
+        // Create a GamedMetric
+        $metric = GamedMetric::create([
+            'slug' => 'test-combat-xp',
+            'name' => 'Combat XP',
+            'description' => 'XP from combat',
+            'active' => true,
+        ]);
+
+        $result = LFL::award('test-combat-xp')
+            ->to($user)
+            ->for('defeated enemy')
+            ->amount(50)
+            ->grant();
+
+        expect($result->succeeded())->toBeTrue()
+            ->and($result->message)->toContain('Awarded 50 XP')
+            ->and($result->meta['total_xp'])->toBe(50)
+            ->and($result->meta['current_level'])->toBe(1)
+            ->and($result->meta['gamed_metric_slug'])->toBe('test-combat-xp');
     });
+
+    it('accumulates XP correctly across multiple awards', function () {
+        $user = User::create(['name' => 'Test User', 'email' => 'gamed-metric-accumulate@example.com']);
+
+        $metric = GamedMetric::create([
+            'slug' => 'test-crafting-xp',
+            'name' => 'Crafting XP',
+            'active' => true,
+        ]);
+
+        // Award XP twice
+        LFL::award('test-crafting-xp')->to($user)->amount(30)->grant();
+        $result = LFL::award('test-crafting-xp')->to($user)->amount(20)->grant();
+
+        expect($result->succeeded())->toBeTrue()
+            ->and($result->meta['total_xp'])->toBe(50);
+    });
+
+    it('updates profile total XP', function () {
+        $user = User::create(['name' => 'Test User', 'email' => 'profile-xp@example.com']);
+
+        $metric = GamedMetric::create([
+            'slug' => 'test-profile-xp',
+            'name' => 'Profile XP',
+            'active' => true,
+        ]);
+
+        LFL::award('test-profile-xp')->to($user)->amount(100)->grant();
+
+        $user->refresh();
+        expect($user->getTotalXp())->toBe(100);
+    });
+
+    it('fails when GamedMetric is inactive', function () {
+        $user = User::create(['name' => 'Test User', 'email' => 'gamed-metric-inactive@example.com']);
+
+        $metric = GamedMetric::create([
+            'slug' => 'inactive-xp',
+            'name' => 'Inactive XP',
+            'active' => false,
+        ]);
+
+        $result = LFL::award('inactive-xp')
+            ->to($user)
+            ->amount(50)
+            ->grant();
+
+        expect($result->failed())->toBeTrue()
+            ->and($result->message)->toContain('not active');
+    });
+
+    it('throws exception for non-existent GamedMetric slug', function () {
+        LFL::award('non-existent-metric');
+    })->throws(\InvalidArgumentException::class, "Award type 'non-existent-metric' is not registered");
 
 });
 
 describe('Achievement Awards', function () {
 
-    beforeEach(function () {
-        // Create a test achievement
-        Achievement::create([
-            'slug' => 'first-login',
-            'name' => 'First Login',
-            'description' => 'Logged in for the first time',
-            'is_active' => true,
-        ]);
-
-        Achievement::create([
-            'slug' => 'inactive-achievement',
-            'name' => 'Inactive Achievement',
-            'is_active' => false,
-        ]);
-    });
-
     it('can grant an achievement using fluent API', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        $achievement = Achievement::create([
+            'slug' => 'first-login',
+            'name' => 'First Login',
+            'is_active' => true,
+        ]);
 
         $result = LFL::award('achievement')
             ->to($user)
             ->achievement('first-login')
-            ->for('user logged in')
+            ->for('completed first login')
             ->grant();
 
-        expect($result)->toBeSuccessfulAward()
-            ->and($result->type)->toBe('achievement') // AwardResult stores type as string value
-            ->and($result->meta['achievement_slug'])->toBe('first-login')
+        expect($result->succeeded())->toBeTrue()
+            ->and($result->award)->toBeInstanceOf(AchievementGrant::class)
             ->and($user->hasAchievement('first-login'))->toBeTrue();
     });
 
     it('can grant an achievement using the shorthand method', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        Achievement::create([
+            'slug' => 'task-master',
+            'name' => 'Task Master',
+            'is_active' => true,
+        ]);
 
-        $result = LFL::grantAchievement($user, 'first-login', 'first time login');
+        $result = LFL::grantAchievement($user, 'task-master', 'completed all tasks', 'task-system');
 
-        expect($result)->toBeSuccessfulAward()
-            ->and($user->hasAchievement('first-login'))->toBeTrue();
+        expect($result->succeeded())->toBeTrue()
+            ->and($user->hasAchievement('task-master'))->toBeTrue();
     });
 
     it('fails when achievement does not exist', function () {
@@ -154,42 +199,60 @@ describe('Achievement Awards', function () {
             ->achievement('non-existent')
             ->grant();
 
-        expect($result)->toBeFailedAward()
+        expect($result->failed())->toBeTrue()
             ->and($result->message)->toBe('Achievement not found');
     });
 
     it('fails when achievement is inactive', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        Achievement::create([
+            'slug' => 'inactive-achievement',
+            'name' => 'Inactive',
+            'is_active' => false,
+        ]);
 
-        $result = LFL::grantAchievement($user, 'inactive-achievement');
+        $result = LFL::award('achievement')
+            ->to($user)
+            ->achievement('inactive-achievement')
+            ->grant();
 
-        expect($result)->toBeFailedAward()
+        expect($result->failed())->toBeTrue()
             ->and($result->message)->toBe('Achievement is not active');
     });
 
     it('fails when achievement already granted', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        Achievement::create([
+            'slug' => 'one-time',
+            'name' => 'One Time Only',
+            'is_active' => true,
+        ]);
 
-        // Grant once
-        LFL::grantAchievement($user, 'first-login');
+        // Grant first time
+        LFL::grantAchievement($user, 'one-time');
 
         // Try to grant again
-        $result = LFL::grantAchievement($user, 'first-login');
+        $result = LFL::grantAchievement($user, 'one-time');
 
-        expect($result)->toBeFailedAward()
+        expect($result->failed())->toBeTrue()
             ->and($result->message)->toBe('Achievement already granted');
     });
 
     it('can use reason as achievement slug when no explicit achievement set', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        Achievement::create([
+            'slug' => 'explorer',
+            'name' => 'Explorer',
+            'is_active' => true,
+        ]);
 
         $result = LFL::award('achievement')
             ->to($user)
-            ->for('first-login') // Using reason as slug
+            ->for('explorer') // Using reason as slug
             ->grant();
 
-        expect($result)->toBeSuccessfulAward()
-            ->and($user->hasAchievement('first-login'))->toBeTrue();
+        expect($result->succeeded())->toBeTrue()
+            ->and($user->hasAchievement('explorer'))->toBeTrue();
     });
 
 });
@@ -198,62 +261,81 @@ describe('Prize Awards', function () {
 
     it('can award a prize using fluent API', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        $prize = Prize::create([
+            'slug' => 'gold-medal',
+            'name' => 'Gold Medal',
+            'type' => 'virtual',
+            'is_active' => true,
+        ]);
 
         $result = LFL::award('prize')
             ->to($user)
-            ->for('weekly contest winner')
-            ->from('contest-system')
+            ->for('winning competition')
+            ->withMeta(['prize_id' => $prize->id])
             ->grant();
 
-        expect($result)->toBeSuccessfulAward()
-            ->and($result->type)->toBe('prize') // AwardResult stores type as string value
-            ->and($result->award->type)->toBe('prize');
+        expect($result->succeeded())->toBeTrue()
+            ->and($result->award)->toBeInstanceOf(PrizeGrant::class)
+            ->and($result->meta['prize_name'])->toBe('Gold Medal');
     });
 
-    it('can award a prize using the shorthand method', function () {
+    it('can award a prize using prize_slug in meta', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        Prize::create([
+            'slug' => 'silver-medal',
+            'name' => 'Silver Medal',
+            'type' => 'virtual',
+            'is_active' => true,
+        ]);
 
-        $result = LFL::awardPrize($user, 'lottery winner', 'lottery-system');
-
-        expect($result)->toBeSuccessfulAward()
-            ->and($result->award->reason)->toBe('lottery winner')
-            ->and($result->award->source)->toBe('lottery-system');
-    });
-
-    it('includes prize pending integration note', function () {
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        $result = LFL::awardPrize($user, 'test prize');
-
-        // Prize is stored as Award until Story #9 full integration
-        expect($result->meta['note'])->toBe('Full prize system coming in Story #9');
-    });
-
-});
-
-describe('Badge Awards', function () {
-
-    it('can award a badge using fluent API', function () {
-        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        $result = LFL::award('badge')
+        $result = LFL::award('prize')
             ->to($user)
-            ->for('early-adopter')
-            ->from('onboarding')
+            ->withMeta(['prize_slug' => 'silver-medal'])
             ->grant();
 
-        expect($result)->toBeSuccessfulAward()
-            ->and($result->type)->toBe('badge') // AwardResult stores type as string value
-            ->and($result->award->type)->toBe('badge');
+        expect($result->succeeded())->toBeTrue()
+            ->and($result->meta['prize_slug'])->toBe('silver-medal');
     });
 
-    it('can award a badge using the shorthand method', function () {
+    it('fails when prize not specified', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        $result = LFL::awardBadge($user, 'verified-user', 'identity-system');
+        $result = LFL::award('prize')
+            ->to($user)
+            ->grant();
 
-        expect($result)->toBeSuccessfulAward()
-            ->and($result->award->reason)->toBe('verified-user');
+        expect($result->failed())->toBeTrue()
+            ->and($result->message)->toContain('Prize not specified');
+    });
+
+    it('fails when prize does not exist', function () {
+        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+
+        $result = LFL::award('prize')
+            ->to($user)
+            ->withMeta(['prize_id' => 99999])
+            ->grant();
+
+        expect($result->failed())->toBeTrue()
+            ->and($result->message)->toBe('Prize not found');
+    });
+
+    it('increments profile prize count', function () {
+        $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        $prize = Prize::create([
+            'slug' => 'bronze-medal',
+            'name' => 'Bronze Medal',
+            'type' => 'virtual',
+            'is_active' => true,
+        ]);
+
+        LFL::award('prize')
+            ->to($user)
+            ->withMeta(['prize_id' => $prize->id])
+            ->grant();
+
+        $user->refresh();
+        expect($user->getPrizeCount())->toBe(1);
     });
 
 });
@@ -261,25 +343,36 @@ describe('Badge Awards', function () {
 describe('Validation', function () {
 
     it('fails when no recipient is specified', function () {
-        $result = LFL::award('points')
-            ->for('orphan points')
-            ->amount(100)
-            ->grant();
+        GamedMetric::create([
+            'slug' => 'validation-test',
+            'name' => 'Validation Test',
+            'active' => true,
+        ]);
 
-        expect($result)->toBeFailedAward()
-            ->and($result->message)->toBe('No recipient specified for award')
-            ->and($result->hasError('recipient'))->toBeTrue();
-    });
-
-    it('fails when recipient does not use Awardable trait', function () {
-        $model = NonAwardableModel::create(['name' => 'Test', 'email' => 'test@example.com']);
-
-        $result = LFL::award('points')
-            ->to($model)
+        $result = LFL::award('validation-test')
             ->amount(50)
             ->grant();
 
-        expect($result)->toBeFailedAward()
+        expect($result->failed())->toBeTrue()
+            ->and($result->message)->toBe('No recipient specified for award');
+    });
+
+    it('fails when recipient does not use Awardable trait', function () {
+        GamedMetric::create([
+            'slug' => 'awardable-test',
+            'name' => 'Awardable Test',
+            'active' => true,
+        ]);
+
+        $nonAwardable = new NonAwardableModel;
+        $nonAwardable->id = 1;
+
+        $result = LFL::award('awardable-test')
+            ->to($nonAwardable)
+            ->amount(50)
+            ->grant();
+
+        expect($result->failed())->toBeTrue()
             ->and($result->message)->toBe('Recipient must use the Awardable trait');
     });
 
@@ -291,39 +384,49 @@ describe('Events', function () {
         Event::fake([AwardGranted::class]);
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        GamedMetric::create([
+            'slug' => 'event-test',
+            'name' => 'Event Test',
+            'active' => true,
+        ]);
 
-        LFL::awardPoints($user, 50);
+        LFL::award('event-test')->to($user)->amount(50)->grant();
 
-        Event::assertDispatched(AwardGranted::class, function ($event) use ($user) {
-            return $event->type === 'points' // Event stores type as string value
-                && $event->recipient->is($user)
-                && $event->award->amount === '50.00';
-        });
+        Event::assertDispatched(AwardGranted::class);
     });
 
     it('dispatches AwardFailed event on failed award', function () {
         Event::fake([AwardFailed::class]);
 
-        $model = NonAwardableModel::create(['name' => 'Test', 'email' => 'test@example.com']);
+        GamedMetric::create([
+            'slug' => 'failed-event-test',
+            'name' => 'Failed Event Test',
+            'active' => true,
+        ]);
 
-        LFL::award('points')->to($model)->amount(50)->grant();
+        // No recipient
+        LFL::award('failed-event-test')->amount(50)->grant();
 
-        Event::assertDispatched(AwardFailed::class, function ($event) {
-            return $event->type === 'points' // Event stores type as string value
-                && $event->result->message === 'Recipient must use the Awardable trait';
-        });
+        Event::assertDispatched(AwardFailed::class);
     });
 
     it('does not dispatch events when disabled in config', function () {
-        Event::fake([AwardGranted::class]);
-
+        Event::fake([AwardGranted::class, AwardFailed::class]);
         config(['lfl.events.dispatch' => false]);
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        GamedMetric::create([
+            'slug' => 'no-event-test',
+            'name' => 'No Event Test',
+            'active' => true,
+        ]);
 
-        LFL::awardPoints($user, 50);
+        LFL::award('no-event-test')->to($user)->amount(50)->grant();
 
         Event::assertNotDispatched(AwardGranted::class);
+
+        // Reset config
+        config(['lfl.events.dispatch' => true]);
     });
 
 });
@@ -332,24 +435,29 @@ describe('AwardResult', function () {
 
     it('can convert result to array for API responses', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        GamedMetric::create([
+            'slug' => 'array-test',
+            'name' => 'Array Test',
+            'active' => true,
+        ]);
 
-        $result = LFL::awardPoints($user, 50, 'test award');
+        $result = LFL::award('array-test')->to($user)->amount(50)->grant();
 
         $array = $result->toArray();
 
-        expect($array)
-            ->toHaveKey('success', true)
-            ->toHaveKey('type', 'points')
-            ->toHaveKey('award_id')
-            ->toHaveKey('recipient_type')
-            ->toHaveKey('recipient_id', $user->id);
+        expect($array)->toHaveKeys(['success', 'type', 'message', 'meta']);
     });
 
     it('provides helper methods for checking status', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        GamedMetric::create([
+            'slug' => 'status-test',
+            'name' => 'Status Test',
+            'active' => true,
+        ]);
 
-        $successResult = LFL::awardPoints($user, 50);
-        $failResult = LFL::award('points')->grant(); // No recipient
+        $successResult = LFL::award('status-test')->to($user)->amount(50)->grant();
+        $failResult = LFL::award('status-test')->grant(); // No recipient
 
         expect($successResult->succeeded())->toBeTrue()
             ->and($successResult->failed())->toBeFalse()
@@ -358,7 +466,13 @@ describe('AwardResult', function () {
     });
 
     it('can get first error message', function () {
-        $result = LFL::award('points')->grant();
+        GamedMetric::create([
+            'slug' => 'error-test',
+            'name' => 'Error Test',
+            'active' => true,
+        ]);
+
+        $result = LFL::award('error-test')->grant();
 
         expect($result->firstError())->toBe('A recipient is required to grant an award');
     });

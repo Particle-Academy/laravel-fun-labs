@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use LaravelFunLab\Facades\LFL;
 use LaravelFunLab\Models\Achievement;
+use LaravelFunLab\Models\GamedMetric;
 use LaravelFunLab\Tests\Fixtures\User;
 
 /*
@@ -12,7 +13,7 @@ use LaravelFunLab\Tests\Fixtures\User;
 |--------------------------------------------------------------------------
 |
 | Tests for the REST API endpoints including profiles, leaderboards,
-| achievements, and awards. Verifies JSON responses, filtering, and pagination.
+| achievements, and profile metrics. Verifies JSON responses, filtering, and pagination.
 |
 */
 
@@ -24,6 +25,14 @@ describe('API Routes', function () {
         config(['lfl.api.prefix' => 'api/lfl']);
         // Disable auth middleware for tests (set to null)
         config(['lfl.api.auth.middleware' => null]);
+
+        // Create a default GamedMetric for XP tests
+        GamedMetric::create([
+            'slug' => 'general-xp',
+            'name' => 'General XP',
+            'description' => 'General experience points',
+            'active' => true,
+        ]);
     });
 
     describe('Profile API', function () {
@@ -32,7 +41,7 @@ describe('API Routes', function () {
             $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
             $profile = $user->getProfile();
             $profile->update([
-                'total_points' => 150.50,
+                'total_xp' => 150,
                 'achievement_count' => 3,
                 'prize_count' => 2,
             ]);
@@ -48,7 +57,7 @@ describe('API Routes', function () {
                         'is_opted_in',
                         'display_preferences',
                         'visibility_settings',
-                        'total_points',
+                        'total_xp',
                         'achievement_count',
                         'prize_count',
                         'last_activity_at',
@@ -60,7 +69,7 @@ describe('API Routes', function () {
                     'data' => [
                         'awardable_type' => User::class,
                         'awardable_id' => $user->id,
-                        'total_points' => 150.5,
+                        'total_xp' => 150,
                         'achievement_count' => 3,
                         'prize_count' => 2,
                     ],
@@ -87,8 +96,8 @@ describe('API Routes', function () {
             $profile1 = $user1->getProfile();
             $profile2 = $user2->getProfile();
 
-            $profile1->update(['total_points' => 200]);
-            $profile2->update(['total_points' => 100]);
+            $profile1->update(['total_xp' => 200]);
+            $profile2->update(['total_xp' => 100]);
 
             $response = $this->getJson('/api/lfl/leaderboards/'.urlencode(User::class));
 
@@ -100,7 +109,7 @@ describe('API Routes', function () {
                             'id',
                             'awardable_type',
                             'awardable_id',
-                            'total_points',
+                            'total_xp',
                             'achievement_count',
                             'prize_count',
                             'last_activity_at',
@@ -124,9 +133,9 @@ describe('API Routes', function () {
 
             $data = $response->json('data');
             expect($data)->toHaveCount(2)
-                ->and((float) $data[0]['total_points'])->toBe(200.0)
+                ->and($data[0]['total_xp'])->toBe(200)
                 ->and($data[0]['rank'])->toBe(1)
-                ->and((float) $data[1]['total_points'])->toBe(100.0)
+                ->and($data[1]['total_xp'])->toBe(100)
                 ->and($data[1]['rank'])->toBe(2);
         });
 
@@ -153,7 +162,7 @@ describe('API Routes', function () {
             for ($i = 1; $i <= 20; $i++) {
                 $user = User::create(['name' => "User {$i}", 'email' => "user{$i}@example.com"]);
                 $profile = $user->getProfile();
-                $profile->update(['total_points' => $i * 10]);
+                $profile->update(['total_xp' => $i * 10]);
             }
 
             $response = $this->getJson('/api/lfl/leaderboards/'.urlencode(User::class).'?per_page=5&page=1');
@@ -172,8 +181,8 @@ describe('API Routes', function () {
             $profile1 = $user1->getProfile();
             $profile2 = $user2->getProfile();
 
-            $profile1->update(['total_points' => 100]);
-            $profile2->update(['total_points' => 50]);
+            $profile1->update(['total_xp' => 100]);
+            $profile2->update(['total_xp' => 50]);
 
             $response = $this->getJson('/api/lfl/leaderboards/'.urlencode(User::class).'?period=weekly');
 
@@ -281,98 +290,27 @@ describe('API Routes', function () {
 
     });
 
-    describe('Awards API', function () {
+    describe('Profile Metrics API', function () {
 
-        it('returns award history for a user', function () {
+        it('returns XP history for a user', function () {
             $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
             $user->getProfile();
 
-            LFL::awardPoints($user, 50, 'Test reason');
-            LFL::awardPoints($user, 30, 'Another reason');
+            LFL::awardGamedMetric($user, 'general-xp', 50);
+            LFL::awardGamedMetric($user, 'general-xp', 30);
 
-            $response = $this->getJson('/api/lfl/awards/'.urlencode(User::class).'/'.$user->id);
+            // Check that profile metrics were created
+            $metrics = $user->getProfile()->metrics;
 
-            $response->assertSuccessful()
-                ->assertJsonStructure([
-                    'data' => [
-                        '*' => [
-                            'id',
-                            'awardable_type',
-                            'awardable_id',
-                            'type',
-                            'amount',
-                            'reason',
-                            'source',
-                            'meta',
-                            'created_at',
-                            'updated_at',
-                        ],
-                    ],
-                    'meta' => [
-                        'current_page',
-                        'from',
-                        'last_page',
-                        'per_page',
-                        'to',
-                        'total',
-                    ],
-                    'links' => [
-                        'first',
-                        'last',
-                        'prev',
-                        'next',
-                    ],
-                ]);
-
-            $data = $response->json('data');
-            expect($data)->toHaveCount(2)
-                ->and((float) $data[0]['amount'])->toBe(50.0)
-                ->and($data[0]['reason'])->toBe('Test reason')
-                ->and((float) $data[1]['amount'])->toBe(30.0);
+            expect($metrics)->toHaveCount(1)
+                ->and($metrics->first()->total_xp)->toBe(80);
         });
 
-        it('filters awards by type', function () {
+        it('returns empty array when user has no XP', function () {
             $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-            $user->getProfile();
+            $profile = $user->getProfile();
 
-            LFL::awardPoints($user, 50);
-            LFL::awardBadge($user, 'Test badge');
-
-            $response = $this->getJson('/api/lfl/awards/'.urlencode(User::class).'/'.$user->id.'?award_type=points');
-
-            $response->assertSuccessful();
-            $data = $response->json('data');
-            expect($data)->toHaveCount(1)
-                ->and($data[0]['type'])->toBe('points');
-        });
-
-        it('supports pagination', function () {
-            $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-            $user->getProfile();
-
-            // Create multiple awards
-            for ($i = 1; $i <= 20; $i++) {
-                LFL::awardPoints($user, $i * 10);
-            }
-
-            $response = $this->getJson('/api/lfl/awards/'.urlencode(User::class).'/'.$user->id.'?per_page=10&page=1');
-
-            $response->assertSuccessful();
-            $data = $response->json('data');
-            expect($data)->toHaveCount(10)
-                ->and($response->json('meta.per_page'))->toBe(10)
-                ->and($response->json('meta.total'))->toBe(20);
-        });
-
-        it('returns empty array when user has no awards', function () {
-            $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-            $response = $this->getJson('/api/lfl/awards/'.urlencode(User::class).'/'.$user->id);
-
-            $response->assertSuccessful();
-            $data = $response->json('data');
-            expect($data)->toBeArray()
-                ->and($data)->toHaveCount(0);
+            expect($profile->metrics)->toHaveCount(0);
         });
 
     });

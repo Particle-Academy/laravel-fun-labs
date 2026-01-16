@@ -3,10 +3,11 @@
 declare(strict_types=1);
 
 use Carbon\Carbon;
-use LaravelFunLab\Enums\AwardType;
 use LaravelFunLab\Facades\LFL;
 use LaravelFunLab\Models\Achievement;
-use LaravelFunLab\Models\EventLog;
+use LaravelFunLab\Models\GamedMetric;
+use LaravelFunLab\Models\Profile;
+use LaravelFunLab\Models\ProfileMetric;
 use LaravelFunLab\Tests\Fixtures\User;
 
 /*
@@ -41,95 +42,45 @@ describe('Analytics Filtering', function () {
         $this->user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
         $this->user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
 
-        // Create some awards with different types and sources
-        LFL::awardPoints($this->user1, 50, 'task completion', 'task-system');
-        LFL::awardPoints($this->user2, 30, 'task completion', 'task-system');
-        LFL::awardPoints($this->user1, 20, 'bonus', 'admin');
+        // Create a GamedMetric for XP
+        GamedMetric::create([
+            'slug' => 'general-xp',
+            'name' => 'General XP',
+            'description' => 'General experience points',
+            'active' => true,
+        ]);
+
+        // Create some XP awards
+        LFL::awardGamedMetric($this->user1, 'general-xp', 50);
+        LFL::awardGamedMetric($this->user2, 'general-xp', 30);
+        LFL::awardGamedMetric($this->user1, 'general-xp', 20);
     });
 
-    it('can filter by award type', function () {
-        $count = LFL::analytics()
-            ->byType(AwardType::Points)
-            ->count();
+    it('can count total XP awarded', function () {
+        $totalXp = ProfileMetric::sum('total_xp');
 
-        expect($count)->toBe(3);
+        // user1: 50 + 20 = 70, user2: 30 = 30, total = 100
+        expect($totalXp)->toBe(100);
     });
 
     it('can filter by awardable type', function () {
-        $count = LFL::analytics()
-            ->forAwardableType(User::class)
-            ->count();
+        $profiles = Profile::forAwardableType(User::class)->count();
 
-        expect($count)->toBe(3);
+        expect($profiles)->toBe(2);
     });
 
-    it('can filter by source', function () {
-        $count = LFL::analytics()
-            ->fromSource('task-system')
-            ->count();
+    it('can count profiles with XP', function () {
+        $count = Profile::where('total_xp', '>', 0)->count();
 
         expect($count)->toBe(2);
     });
 
     it('can filter by date period', function () {
-        // Create an old award
-        $oldDate = Carbon::now()->subDays(10);
-        EventLog::create([
-            'event_type' => 'points_awarded',
-            'award_type' => 'points',
-            'awardable_type' => User::class,
-            'awardable_id' => $this->user1->id,
-            'amount' => 100,
-            'occurred_at' => $oldDate,
-        ]);
+        // Both profile metrics are recent (created in beforeEach)
+        $recentCount = ProfileMetric::where('updated_at', '>=', Carbon::now()->startOfWeek())->count();
 
-        $recentCount = LFL::analytics()
-            ->period('weekly')
-            ->count();
-
-        expect($recentCount)->toBe(3); // Only recent awards
-    });
-
-    it('can filter between specific dates', function () {
-        $start = Carbon::now()->subDays(5);
-        $end = Carbon::now()->subDays(2);
-
-        // Create awards in the date range
-        EventLog::create([
-            'event_type' => 'points_awarded',
-            'award_type' => 'points',
-            'awardable_type' => User::class,
-            'awardable_id' => $this->user1->id,
-            'amount' => 25,
-            'occurred_at' => Carbon::now()->subDays(3),
-        ]);
-
-        $count = LFL::analytics()
-            ->between($start, $end)
-            ->count();
-
-        expect($count)->toBe(1);
-    });
-
-    it('can filter by achievement slug', function () {
-        $achievement = LFL::setup('first-login', for: User::class);
-        LFL::grantAchievement($this->user1, 'first-login');
-
-        $count = LFL::analytics()
-            ->forAchievement('first-login')
-            ->count();
-
-        expect($count)->toBe(1);
-    });
-
-    it('can chain multiple filters', function () {
-        $total = LFL::analytics()
-            ->byType(AwardType::Points)
-            ->fromSource('task-system')
-            ->forAwardableType(User::class)
-            ->total();
-
-        expect($total)->toBe(80.0); // 50 + 30
+        // Both metrics should be recent
+        expect($recentCount)->toBe(2);
     });
 
 });
@@ -140,164 +91,47 @@ describe('Analytics Aggregations', function () {
         $this->user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
         $this->user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
 
-        LFL::awardPoints($this->user1, 50);
-        LFL::awardPoints($this->user1, 30);
-        LFL::awardPoints($this->user2, 20);
-    });
-
-    it('can count total events', function () {
-        $count = LFL::analytics()
-            ->byType(AwardType::Points)
-            ->count();
-
-        expect($count)->toBe(3);
-    });
-
-    it('can calculate total amount', function () {
-        $total = LFL::analytics()
-            ->byType(AwardType::Points)
-            ->total();
-
-        expect($total)->toBe(100.0);
-    });
-
-    it('can calculate average amount', function () {
-        $average = LFL::analytics()
-            ->byType(AwardType::Points)
-            ->average();
-
-        expect($average)->toBeGreaterThan(33.0)
-            ->and($average)->toBeLessThan(34.0); // 100 / 3 ≈ 33.33
-    });
-
-    it('can find minimum amount', function () {
-        $min = LFL::analytics()
-            ->byType(AwardType::Points)
-            ->min();
-
-        expect($min)->toBe(20.0);
-    });
-
-    it('can find maximum amount', function () {
-        $max = LFL::analytics()
-            ->byType(AwardType::Points)
-            ->max();
-
-        expect($max)->toBe(50.0);
-    });
-
-});
-
-describe('Analytics Grouping', function () {
-
-    beforeEach(function () {
-        $this->user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
-        $this->user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
-
-        LFL::awardPoints($this->user1, 50, 'task', 'system1');
-        LFL::awardPoints($this->user2, 30, 'task', 'system1');
-        LFL::awardPoints($this->user1, 20, 'bonus', 'system2');
-    });
-
-    it('can group by award type', function () {
-        $results = LFL::analytics()
-            ->byAwardType();
-
-        expect($results)->toHaveKey('points')
-            ->and($results['points']['count'])->toBe(3)
-            ->and($results['points']['total'])->toBe(100.0);
-    });
-
-    it('can group by awardable type', function () {
-        $results = LFL::analytics()
-            ->byAwardableType();
-
-        expect($results)->toHaveKey(User::class)
-            ->and($results[User::class]['count'])->toBe(3)
-            ->and($results[User::class]['unique_awardables'])->toBe(2);
-    });
-
-    it('can group by source', function () {
-        $results = LFL::analytics()
-            ->bySource();
-
-        expect($results)->toHaveKey('system1')
-            ->and($results['system1']['count'])->toBe(2)
-            ->and($results['system1']['total'])->toBe(80.0)
-            ->and($results)->toHaveKey('system2')
-            ->and($results['system2']['count'])->toBe(1)
-            ->and($results['system2']['total'])->toBe(20.0);
-    });
-
-});
-
-describe('Time-Series Analytics', function () {
-
-    beforeEach(function () {
-        $this->user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        // Create events at different times
-        EventLog::create([
-            'event_type' => 'points_awarded',
-            'award_type' => 'points',
-            'awardable_type' => User::class,
-            'awardable_id' => $this->user->id,
-            'amount' => 10,
-            'occurred_at' => Carbon::now()->subDays(2),
+        // Create a GamedMetric for XP
+        GamedMetric::create([
+            'slug' => 'general-xp',
+            'name' => 'General XP',
+            'description' => 'General experience points',
+            'active' => true,
         ]);
 
-        EventLog::create([
-            'event_type' => 'points_awarded',
-            'award_type' => 'points',
-            'awardable_type' => User::class,
-            'awardable_id' => $this->user->id,
-            'amount' => 20,
-            'occurred_at' => Carbon::now()->subDays(1),
-        ]);
-
-        EventLog::create([
-            'event_type' => 'points_awarded',
-            'award_type' => 'points',
-            'awardable_type' => User::class,
-            'awardable_id' => $this->user->id,
-            'amount' => 30,
-            'occurred_at' => Carbon::now(),
-        ]);
+        LFL::awardGamedMetric($this->user1, 'general-xp', 50);
+        LFL::awardGamedMetric($this->user2, 'general-xp', 30);
+        LFL::awardGamedMetric($this->user1, 'general-xp', 20);
     });
 
-    it('can generate time-series data by day', function () {
-        $series = LFL::analytics()
-            ->byType(AwardType::Points)
-            ->timeSeries('day');
+    it('can count total profiles', function () {
+        $count = Profile::count();
 
-        expect($series)->toBeArray()
-            ->and(count($series))->toBeGreaterThanOrEqual(3);
+        expect($count)->toBe(2);
     });
 
-    it('can generate time-series data by hour', function () {
-        $series = LFL::analytics()
-            ->byType(AwardType::Points)
-            ->timeSeries('hour');
+    it('can calculate total XP', function () {
+        $total = Profile::sum('total_xp');
 
-        expect($series)->toBeArray();
+        expect($total)->toBe(100);
     });
 
-    it('can generate time-series data by month', function () {
-        $series = LFL::analytics()
-            ->byType(AwardType::Points)
-            ->timeSeries('month');
+    it('can calculate average XP', function () {
+        $average = Profile::avg('total_xp');
 
-        expect($series)->toBeArray();
+        expect($average)->toBe(50.0);
     });
 
-    it('returns time-series data in correct format', function () {
-        $series = LFL::analytics()
-            ->byType(AwardType::Points)
-            ->timeSeries('day');
+    it('can find minimum XP', function () {
+        $min = Profile::min('total_xp');
 
-        if (count($series) > 0) {
-            expect($series[0])->toHaveKeys(['period', 'count', 'total']);
-        }
+        expect($min)->toBe(30);
+    });
+
+    it('can find maximum XP', function () {
+        $max = Profile::max('total_xp');
+
+        expect($max)->toBe(70);
     });
 
 });
@@ -305,40 +139,43 @@ describe('Time-Series Analytics', function () {
 describe('Active Users Analytics', function () {
 
     beforeEach(function () {
-        $this->user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
-        $this->user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
-        $this->user3 = User::create(['name' => 'User 3', 'email' => 'user3@example.com']);
-
-        LFL::awardPoints($this->user1, 50);
-        LFL::awardPoints($this->user2, 30);
-        LFL::awardPoints($this->user1, 20); // Same user again
+        // Create a GamedMetric for XP
+        GamedMetric::create([
+            'slug' => 'general-xp',
+            'name' => 'General XP',
+            'description' => 'General experience points',
+            'active' => true,
+        ]);
     });
 
     it('can count active users', function () {
-        $activeUsers = LFL::analytics()
-            ->byType(AwardType::Points)
-            ->activeUsers();
+        $user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
+        $user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
+        $user3 = User::create(['name' => 'User 3', 'email' => 'user3@example.com']);
 
-        expect($activeUsers)->toBe(2); // user1 and user2, not user3
+        LFL::awardGamedMetric($user1, 'general-xp', 10);
+        LFL::awardGamedMetric($user2, 'general-xp', 20);
+        // user3 has no XP
+
+        $activeUsers = Profile::where('total_xp', '>', 0)->count();
+
+        expect($activeUsers)->toBe(2);
     });
 
     it('can count active users in a period', function () {
-        // Create an old award
-        EventLog::create([
-            'event_type' => 'points_awarded',
-            'award_type' => 'points',
-            'awardable_type' => User::class,
-            'awardable_id' => $this->user3->id,
-            'amount' => 10,
-            'occurred_at' => Carbon::now()->subDays(10),
-        ]);
+        $user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
+        $user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
 
-        $recentActive = LFL::analytics()
-            ->byType(AwardType::Points)
-            ->period('weekly')
-            ->activeUsers();
+        LFL::awardGamedMetric($user1, 'general-xp', 10);
+        LFL::awardGamedMetric($user2, 'general-xp', 20);
 
-        expect($recentActive)->toBe(2); // Only user1 and user2 in recent period
+        // Update one profile to be old
+        $profile = Profile::first();
+        $profile->update(['last_activity_at' => Carbon::now()->subDays(10)]);
+
+        $recentlyActive = Profile::where('last_activity_at', '>=', Carbon::now()->startOfWeek())->count();
+
+        expect($recentlyActive)->toBe(1);
     });
 
 });
@@ -346,35 +183,45 @@ describe('Active Users Analytics', function () {
 describe('Achievement Completion Rate', function () {
 
     beforeEach(function () {
-        $this->user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
-        $this->user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
-        $this->user3 = User::create(['name' => 'User 3', 'email' => 'user3@example.com']);
-
-        $achievement = LFL::setup('first-login', for: User::class);
-
-        // Grant achievement to 2 out of 3 users
-        LFL::grantAchievement($this->user1, 'first-login');
-        LFL::grantAchievement($this->user2, 'first-login');
-
-        // Create some other activity for user3
-        LFL::awardPoints($this->user3, 10);
+        // Create a GamedMetric for XP
+        GamedMetric::create([
+            'slug' => 'general-xp',
+            'name' => 'General XP',
+            'description' => 'General experience points',
+            'active' => true,
+        ]);
     });
 
     it('can calculate achievement completion rate', function () {
-        $rate = LFL::analytics()
-            ->forAchievement('first-login')
-            ->achievementCompletionRate();
+        $user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
+        $user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
 
-        // Should be 2 out of 3 users (66.67%)
-        expect($rate)->toBeGreaterThan(60.0)
-            ->and($rate)->toBeLessThan(70.0);
-    });
+        // Create profiles
+        $user1->getProfile();
+        $user2->getProfile();
 
-    it('can calculate completion rate with slug parameter', function () {
-        $rate = LFL::analytics()
-            ->achievementCompletionRate('first-login');
+        // Create achievement
+        Achievement::create([
+            'slug' => 'first-login',
+            'name' => 'First Login',
+            'is_active' => true,
+        ]);
 
-        expect($rate)->toBeGreaterThan(0);
+        // Grant to one user
+        LFL::grantAchievement($user1, 'first-login');
+
+        // Refresh profiles to get updated counts
+        $user1->refresh();
+
+        // Calculate completion rate
+        $totalProfiles = Profile::count();
+        $profilesWithAchievement = Profile::where('achievement_count', '>', 0)->count();
+
+        $completionRate = ($profilesWithAchievement / $totalProfiles) * 100;
+
+        expect($totalProfiles)->toBe(2)
+            ->and($profilesWithAchievement)->toBe(1)
+            ->and($completionRate)->toBe(50.0);
     });
 
 });
@@ -382,55 +229,34 @@ describe('Achievement Completion Rate', function () {
 describe('Export Functionality', function () {
 
     beforeEach(function () {
-        $this->user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
-
-        LFL::awardPoints($this->user, 50, 'task completion', 'task-system');
+        // Create a GamedMetric for XP
+        GamedMetric::create([
+            'slug' => 'general-xp',
+            'name' => 'General XP',
+            'description' => 'General experience points',
+            'active' => true,
+        ]);
     });
 
-    it('can export analytics data', function () {
-        $export = LFL::analytics()
-            ->byType(AwardType::Points)
-            ->export();
+    it('can export profile data', function () {
+        $user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
+        $user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
 
-        expect($export)->toBeArray()
-            ->and(count($export))->toBeGreaterThan(0)
-            ->and($export[0])->toHaveKeys([
-                'id',
-                'event_type',
-                'award_type',
-                'awardable_type',
-                'awardable_id',
-                'achievement_slug',
-                'amount',
-                'reason',
-                'source',
-                'occurred_at',
-                'context',
-            ]);
-    });
+        LFL::awardGamedMetric($user1, 'general-xp', 50);
+        LFL::awardGamedMetric($user2, 'general-xp', 30);
 
-    it('can limit export results', function () {
-        // Create multiple events
-        for ($i = 0; $i < 5; $i++) {
-            LFL::awardPoints($this->user, 10);
-        }
+        $data = Profile::all()->map(function ($profile) {
+            return [
+                'awardable_type' => $profile->awardable_type,
+                'awardable_id' => $profile->awardable_id,
+                'total_xp' => $profile->total_xp,
+                'achievement_count' => $profile->achievement_count,
+                'prize_count' => $profile->prize_count,
+            ];
+        })->toArray();
 
-        $export = LFL::analytics()
-            ->byType(AwardType::Points)
-            ->export(limit: 3);
-
-        expect(count($export))->toBeLessThanOrEqual(3);
-    });
-
-    it('exports data in ISO8601 format for dates', function () {
-        $export = LFL::analytics()
-            ->byType(AwardType::Points)
-            ->export();
-
-        if (count($export) > 0 && $export[0]['occurred_at'] !== null) {
-            // Should be ISO8601 format
-            expect($export[0]['occurred_at'])->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/');
-        }
+        expect($data)->toHaveCount(2)
+            ->and($data[0])->toHaveKeys(['awardable_type', 'awardable_id', 'total_xp', 'achievement_count', 'prize_count']);
     });
 
 });

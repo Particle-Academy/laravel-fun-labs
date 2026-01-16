@@ -5,21 +5,19 @@ This guide provides practical examples and patterns for using Laravel Fun Lab in
 ## Table of Contents
 
 - [Setting Up Models](#setting-up-models)
-- [Awarding Points](#awarding-points)
-- [Achievements](#achievements)
-- [Leaderboards](#leaderboards)
 - [Profiles](#profiles)
-- [Analytics](#analytics)
+- [GamedMetrics (XP System)](#gamedmetrics-xp-system)
+- [Achievements](#achievements)
 - [Prizes](#prizes)
-- [Badges](#badges)
-- [GamedMetrics & Levels](#gamedmetrics--levels)
+- [Leaderboards](#leaderboards)
+- [Analytics](#analytics)
 - [Common Patterns](#common-patterns)
 
 ## Setting Up Models
 
 ### Add the Awardable Trait
 
-Add the `Awardable` trait to any Eloquent model you want to track:
+Add the `Awardable` trait to any Eloquent model you want to gamify:
 
 ```php
 use LaravelFunLab\Traits\Awardable;
@@ -33,169 +31,290 @@ class User extends Authenticatable
 }
 ```
 
+The trait works with any model - Users, Teams, Organizations, etc.:
+
+```php
+class Team extends Model
+{
+    use Awardable;
+}
+
+class Organization extends Model
+{
+    use Awardable;
+}
+```
+
+### What the Awardable Trait Provides
+
 The trait provides:
-- Relationships: `awards()`, `achievementGrants()`
-- Helper methods: `getTotalPoints()`, `hasAchievement()`, `getAchievements()`, etc.
+- **Profile relationship**: Each awardable model gets a Profile that tracks XP, achievements, and prizes
+- **Achievement grants relationship**: `achievementGrants()`
+- **Prize grants relationship**: `prizeGrants()`
+- **Helper methods**: `hasAchievement()`, `getProfile()`, `isOptedIn()`, etc.
 
 ### Using Helper Methods
 
 ```php
 $user = User::find(1);
 
-// Get total points
-$totalPoints = $user->getTotalPoints();
+// Get or create the user's profile
+$profile = $user->getProfile();
+echo $profile->total_xp;
+echo $profile->achievement_count;
+echo $profile->prize_count;
 
 // Check if user has an achievement
 if ($user->hasAchievement('first-login')) {
     // ...
 }
 
-// Get all achievements
-$achievements = $user->getAchievements();
-
-// Get recent awards
-$recentAwards = $user->getRecentAwards(10);
+// Check opt-in status
+if ($user->isOptedIn()) {
+    // User participates in gamification
+}
 ```
 
-## Awarding Points
+## Profiles
 
-### Fluent API
+Every awardable model has a Profile that tracks:
+- **Total XP**: Sum of all XP across all GamedMetrics
+- **Achievement count**: Number of achievements earned
+- **Prize count**: Number of prizes awarded
+- **Opt-in status**: Whether the user participates in gamification
+- **Display preferences**: User preferences for how their profile is shown
+- **Visibility settings**: What parts of their profile are public
 
-Use the fluent API for full control:
+### Getting a Profile
+
+```php
+// Get or create profile
+$profile = $user->getProfile();
+
+// Check if profile exists
+if ($user->hasProfile()) {
+    // ...
+}
+
+// Access profile data
+echo $profile->total_xp;
+echo $profile->achievement_count;
+echo $profile->prize_count;
+echo $profile->last_activity_at;
+```
+
+### Opt-In/Opt-Out
+
+Users can opt out of gamification:
+
+```php
+// Opt out
+$user->optOut();
+
+// Opt back in
+$user->optIn();
+
+// Check status
+if ($user->isOptedIn()) {
+    // User participates
+}
+
+if ($user->isOptedOut()) {
+    // User has opted out - they won't appear on leaderboards
+}
+```
+
+## GamedMetrics (XP System)
+
+GamedMetrics are independent XP categories. Each metric tracks its own XP and can have its own level progression.
+
+### Creating GamedMetrics
 
 ```php
 use LaravelFunLab\Facades\LFL;
 
-$result = LFL::award('points')
-    ->to($user)
-    ->for('completed task')
-    ->from('task-system')
-    ->amount(50)
-    ->withMeta(['task_id' => 123])
-    ->grant();
+// Create via setup()
+LFL::setup(
+    a: 'gamed-metric',
+    slug: 'combat-xp',
+    name: 'Combat XP',
+    description: 'Experience from combat activities'
+);
 
-if ($result->success) {
-    echo "Awarded {$result->award->amount} points!";
-}
+// Or create directly via model
+use LaravelFunLab\Models\GamedMetric;
+
+GamedMetric::create([
+    'slug' => 'crafting-xp',
+    'name' => 'Crafting XP',
+    'description' => 'Experience from crafting items',
+    'active' => true,
+]);
 ```
 
-### Shorthand Method
-
-For quick point awards:
-
-```php
-LFL::awardPoints($user, 100, 'first login', 'auth');
-```
-
-### Awarding in Controllers
+### Awarding XP
 
 ```php
 use LaravelFunLab\Facades\LFL;
 
-class TaskController extends Controller
-{
-    public function complete(Task $task)
-    {
-        $task->markAsComplete();
-        
-        // Award points for completion
-        LFL::awardPoints(
-            $this->user(),
-            50,
-            "Completed task: {$task->title}",
-            'task-system'
-        );
-        
-        return redirect()->back();
-    }
-}
+// Award XP to a specific GamedMetric
+$profileMetric = LFL::awardGamedMetric($user, 'combat-xp', 50);
+
+// Check the result
+echo $profileMetric->total_xp; // XP for this specific metric
+echo $profileMetric->current_level; // Current level in this metric
+
+// Total XP is automatically updated on the profile
+echo $user->getProfile()->fresh()->total_xp;
 ```
 
-### Using Default Points
-
-If you don't specify an amount, the default from config is used:
+### Querying XP
 
 ```php
-// Uses config('lfl.defaults.points') - default is 10
-LFL::awardPoints($user, null, 'daily check-in');
+$profile = $user->getProfile();
+
+// Get XP for a specific metric
+$combatXp = $profile->getXpFor('combat-xp');
+
+// Get level for a specific metric
+$combatLevel = $profile->getLevelFor('combat-xp');
+
+// Get total XP across all metrics
+$totalXp = $profile->total_xp;
+
+// Get all profile metrics
+$metrics = $profile->metrics; // Collection of ProfileMetric
 ```
+
+### Level Progression
+
+Define levels for GamedMetrics using MetricLevels:
+
+```php
+use LaravelFunLab\Models\MetricLevel;
+
+// Create levels for a GamedMetric
+MetricLevel::create([
+    'gamed_metric_id' => $combatMetric->id,
+    'level' => 1,
+    'xp_required' => 0,
+    'name' => 'Novice',
+]);
+
+MetricLevel::create([
+    'gamed_metric_id' => $combatMetric->id,
+    'level' => 2,
+    'xp_required' => 100,
+    'name' => 'Apprentice',
+]);
+
+MetricLevel::create([
+    'gamed_metric_id' => $combatMetric->id,
+    'level' => 3,
+    'xp_required' => 500,
+    'name' => 'Journeyman',
+]);
+```
+
+Level progression happens automatically when XP is awarded.
 
 ## Achievements
 
-### Setting Up Achievements
-
-Define achievements dynamically:
+### Creating Achievements
 
 ```php
 use LaravelFunLab\Facades\LFL;
 
-// Simple achievement
-$achievement = LFL::setup(an: 'first-login');
-
-// Full achievement with all options
+// Via setup()
 $achievement = LFL::setup(
-    an: 'power-user',
-    for: 'User',
-    name: 'Power User',
-    description: 'Reached 1000 total points',
-    icon: 'star',
-    metadata: ['threshold' => 1000],
-    active: true,
-    order: 10
+    an: 'first-login',
+    for: 'User', // Optional: restrict to specific model type
+    name: 'First Login',
+    description: 'Welcome! You\'ve logged in for the first time.',
+    icon: 'star'
 );
+
+// Or directly via model
+use LaravelFunLab\Models\Achievement;
+
+Achievement::create([
+    'slug' => 'task-master',
+    'name' => 'Task Master',
+    'description' => 'Complete 100 tasks',
+    'icon' => 'trophy',
+    'is_active' => true,
+]);
 ```
 
 ### Granting Achievements
 
 ```php
-// Using fluent API
+use LaravelFunLab\Facades\LFL;
+
+// Grant an achievement
+$result = LFL::grantAchievement($user, 'first-login', 'completed first login', 'auth');
+
+if ($result->succeeded()) {
+    echo "Achievement unlocked!";
+}
+
+// Check if already granted
+if ($user->hasAchievement('first-login')) {
+    // Already has this achievement
+}
+```
+
+### Fluent API for Achievements
+
+```php
 $result = LFL::award('achievement')
     ->to($user)
     ->achievement('first-login')
     ->for('completed first login')
-    ->from('auth')
+    ->from('auth-system')
+    ->grant();
+```
+
+## Prizes
+
+### Creating Prizes
+
+```php
+use LaravelFunLab\Models\Prize;
+use LaravelFunLab\Enums\PrizeType;
+
+Prize::create([
+    'slug' => 'premium-month',
+    'name' => '1 Month Premium Access',
+    'description' => 'One month of premium features',
+    'type' => PrizeType::Virtual,
+    'meta' => ['duration_days' => 30],
+]);
+
+Prize::create([
+    'slug' => 'tshirt',
+    'name' => 'LFL T-Shirt',
+    'description' => 'Exclusive branded t-shirt',
+    'type' => PrizeType::Physical,
+]);
+```
+
+### Awarding Prizes
+
+```php
+use LaravelFunLab\Facades\LFL;
+
+$result = LFL::award('prize')
+    ->to($user)
+    ->for('won monthly contest')
+    ->from('contest-system')
+    ->withMeta(['prize_slug' => 'premium-month'])
     ->grant();
 
-// Using shorthand
-LFL::grantAchievement($user, 'first-login', 'completed first login', 'auth');
-```
-
-### Checking Achievements
-
-```php
-// Check if user has achievement
-if ($user->hasAchievement('first-login')) {
-    // User has this achievement
-}
-
-// Get all user achievements
-$achievements = $user->getAchievements();
-
-// Check achievement by model
-$achievement = Achievement::where('slug', 'first-login')->first();
-if ($user->hasAchievement($achievement)) {
-    // ...
+if ($result->succeeded()) {
+    echo "Prize awarded!";
 }
 ```
-
-### Conditional Achievement Granting
-
-```php
-// Only grant if user doesn't already have it
-if (!$user->hasAchievement('first-purchase')) {
-    LFL::grantAchievement($user, 'first-purchase', 'made first purchase', 'store');
-}
-```
-
-### Managing Achievements via UI
-
-When the UI layer is enabled (`config('lfl.ui.enabled') => true`), you can manage achievements through the admin interface:
-
-- Visit `/lfl/admin/achievements` to view all achievements
-- Create new achievements via `/lfl/admin/achievements/create`
-- Edit existing achievements via `/lfl/admin/achievements/{achievement}/edit`
-- Delete achievements via the delete action in the list
-- Attach prizes to achievements that should be awarded when the achievement is unlocked
 
 ## Leaderboards
 
@@ -204,602 +323,190 @@ When the UI layer is enabled (`config('lfl.ui.enabled') => true`), you can manag
 ```php
 use LaravelFunLab\Facades\LFL;
 
-// Get top 10 users by points
+// Get top 10 users by XP
 $leaderboard = LFL::leaderboard()
     ->for(User::class)
-    ->by('points')
-    ->limit(10)
-    ->get();
+    ->by('xp')
+    ->take(10);
 
-foreach ($leaderboard as $entry) {
-    echo "{$entry->name}: {$entry->points} points";
+foreach ($leaderboard as $profile) {
+    echo "{$profile->rank}. {$profile->awardable->name}: {$profile->total_xp} XP";
 }
 ```
 
-### Leaderboard by Period
+### Sorting Options
 
 ```php
+// By XP (default)
+->by('xp')
+
+// By achievements
+->by('achievements')
+
+// By prizes
+->by('prizes')
+```
+
+### Time-Based Leaderboards
+
+```php
+// Daily leaderboard
+$daily = LFL::leaderboard()
+    ->for(User::class)
+    ->period('daily')
+    ->take(10);
+
 // Weekly leaderboard
 $weekly = LFL::leaderboard()
     ->for(User::class)
-    ->by('points')
     ->period('weekly')
-    ->limit(20)
-    ->get();
+    ->take(10);
 
 // Monthly leaderboard
 $monthly = LFL::leaderboard()
     ->for(User::class)
-    ->by('points')
     ->period('monthly')
-    ->get();
+    ->take(10);
+
+// All-time
+$allTime = LFL::leaderboard()
+    ->for(User::class)
+    ->period('all-time')
+    ->take(10);
 ```
 
-### Paginated Leaderboard
+### Pagination
 
 ```php
+$paginator = LFL::leaderboard()
+    ->for(User::class)
+    ->perPage(20)
+    ->page(1)
+    ->paginate();
+```
+
+### Include Opted-Out Users
+
+By default, opted-out users are excluded:
+
+```php
+// Include everyone
 $leaderboard = LFL::leaderboard()
     ->for(User::class)
-    ->by('points')
-    ->paginate(15);
-
-return view('leaderboard', compact('leaderboard'));
-```
-
-### Leaderboard by Achievement Count
-
-```php
-$achievementLeaders = LFL::leaderboard()
-    ->for(User::class)
-    ->by('achievements')
-    ->limit(10)
+    ->excludeOptedOut(false)
     ->get();
-```
-
-## Profiles
-
-### Getting or Creating Profiles
-
-```php
-use LaravelFunLab\Facades\LFL;
-
-// Get or create profile for a user
-$profile = LFL::profile($user);
-
-// Profile provides access to:
-$totalPoints = $profile->total_points;
-$achievementCount = $profile->achievement_count;
-```
-
-### Profile Helper Methods
-
-```php
-$user = User::find(1);
-
-// Get profile (creates if doesn't exist)
-$profile = $user->profile();
-
-// Access profile data
-echo "Total Points: {$profile->total_points}";
-echo "Achievements: {$profile->achievement_count}";
 ```
 
 ## Analytics
 
-### Total Points
+### Profile Statistics
 
 ```php
-use LaravelFunLab\Facades\LFL;
-use Carbon\Carbon;
+use LaravelFunLab\Models\Profile;
 
-// Total points this month
-$totalPoints = LFL::analytics()
-    ->byType('points')
-    ->period('monthly')
-    ->total();
+// Count profiles with XP
+$activeProfiles = Profile::where('total_xp', '>', 0)->count();
 
-// Total points between dates
-$totalPoints = LFL::analytics()
-    ->byType('points')
-    ->between(Carbon::now()->subDays(30), Carbon::now())
-    ->total();
+// Average XP
+$avgXp = Profile::avg('total_xp');
+
+// Top earners
+$topEarners = Profile::orderByDesc('total_xp')
+    ->take(10)
+    ->get();
 ```
 
-### Active Users
+### Achievement Completion Rate
 
 ```php
-// Active users in last 7 days
-$activeUsers = LFL::analytics()
-    ->since(Carbon::now()->subDays(7))
-    ->activeUsers();
-
-// Active users this month
-$activeUsers = LFL::analytics()
-    ->period('monthly')
-    ->activeUsers();
-```
-
-### Achievement Completion Rates
-
-```php
-// Completion rate for specific achievement
-$completionRate = LFL::analytics()
-    ->forAchievement('first-login')
-    ->achievementCompletionRate();
-
-// Returns percentage (0-100)
-echo "{$completionRate}% of users have completed first login";
-```
-
-### Time-Series Data
-
-```php
-// Daily points awarded
-$dailyData = LFL::analytics()
-    ->byType('points')
-    ->timeSeries('day');
-
-// Returns array of periods with counts and totals
-foreach ($dailyData as $day) {
-    echo "{$day['period']}: {$day['count']} awards, {$day['total']} points";
-}
-```
-
-### Filtering Analytics
-
-```php
-// By source
-$taskSystemPoints = LFL::analytics()
-    ->byType('points')
-    ->fromSource('task-system')
-    ->total();
-
-// By awardable type
-$userPoints = LFL::analytics()
-    ->forAwardableType(User::class)
-    ->byType('points')
-    ->total();
-```
-
-### Exporting Data
-
-```php
-// Export recent events
-$events = LFL::analytics()
-    ->since(Carbon::now()->subDays(30))
-    ->export(limit: 1000);
-
-// Returns array ready for CSV export or external analytics
-```
-
-## Prizes
-
-### Creating Prizes
-
-Prizes can be created programmatically or via the admin UI:
-
-```php
-use LaravelFunLab\Models\Prize;
-use LaravelFunLab\Enums\PrizeType;
-
-// Create a prize programmatically
-$prize = Prize::create([
-    'name' => 'Premium Badge',
-    'slug' => 'premium-badge',
-    'description' => 'Exclusive premium membership badge',
-    'type' => PrizeType::Virtual,
-    'cost_in_points' => 1000,
-    'inventory_quantity' => null, // Unlimited
-    'is_active' => true,
-]);
-```
-
-### Prize Types
-
-Prizes support different types:
-- `Virtual` - Digital rewards (badges, titles, etc.)
-- `Physical` - Physical items that need shipping
-- `FeatureUnlock` - Unlocks features or capabilities
-- `Custom` - Custom prize type for your use case
-
-### Awarding Prizes
-
-```php
-// Using fluent API
-$result = LFL::award('prize')
-    ->to($user)
-    ->prize($prizeId)
-    ->for('won contest')
-    ->from('contest-system')
-    ->grant();
-
-// Using shorthand
-LFL::awardPrize($user, 'won contest', 'contest-system');
-```
-
-### Inventory Management
-
-Prizes can have limited inventory:
-
-```php
-// Create prize with limited inventory
-$prize = Prize::create([
-    'name' => 'Limited Edition T-Shirt',
-    'type' => PrizeType::Physical,
-    'inventory_quantity' => 50, // Only 50 available
-]);
-
-// Check availability
-if ($prize->isAvailable()) {
-    // Prize can be awarded
-    $remaining = $prize->getRemainingInventory(); // Returns remaining count
-}
-```
-
-### Managing Prizes via UI
-
-When the UI layer is enabled (`config('lfl.ui.enabled') => true`), you can manage prizes through the admin interface:
-
-- Visit `/lfl/admin/prizes` to view all prizes
-- Create new prizes via `/lfl/admin/prizes/create`
-- Edit existing prizes via `/lfl/admin/prizes/{prize}/edit`
-- Delete prizes via the delete action in the list
-
-## Badges
-
-### Awarding Badges
-
-```php
-// Using fluent API
-$result = LFL::award('badge')
-    ->to($user)
-    ->badge('early-adopter')
-    ->for('joined in first week')
-    ->from('admin')
-    ->grant();
-
-// Using shorthand
-LFL::awardBadge($user, 'joined in first week', 'admin');
-```
-
-## GamedMetrics & Levels
-
-GamedMetrics allow you to create independent XP categories that track accumulated XP separately. This enables niche leveling systems where users can progress in different areas (e.g., "Combat XP", "Crafting XP", "Social XP").
-
-### Creating GamedMetrics
-
-```php
-use LaravelFunLab\Models\GamedMetric;
-
-// Create a new GamedMetric
-$combatMetric = GamedMetric::create([
-    'name' => 'Combat XP',
-    'slug' => 'combat-xp',
-    'description' => 'Experience gained from combat activities',
-    'icon' => 'sword',
-    'active' => true,
-]);
-```
-
-### Awarding GamedMetric XP
-
-```php
-use LaravelFunLab\Facades\LFL;
-
-// Award XP to a specific GamedMetric
-$userMetric = LFL::awardGamedMetric($user, 'combat-xp', 100);
-
-// Or using the GamedMetric model directly
-$combatMetric = GamedMetric::findBySlug('combat-xp');
-$userMetric = LFL::awardGamedMetric($user, $combatMetric, 50);
-```
-
-### Defining MetricLevels
-
-MetricLevels define level thresholds for GamedMetrics. When a user reaches a threshold, they automatically progress to that level.
-
-```php
-use LaravelFunLab\Models\MetricLevel;
-
-// Create level thresholds for a GamedMetric
-MetricLevel::create([
-    'gamed_metric_id' => $combatMetric->id,
-    'level' => 1,
-    'xp_threshold' => 0,
-    'name' => 'Novice Fighter',
-    'description' => 'Just starting your combat journey',
-]);
-
-MetricLevel::create([
-    'gamed_metric_id' => $combatMetric->id,
-    'level' => 2,
-    'xp_threshold' => 100,
-    'name' => 'Apprentice Fighter',
-    'description' => 'Learning the basics',
-]);
-
-MetricLevel::create([
-    'gamed_metric_id' => $combatMetric->id,
-    'level' => 3,
-    'xp_threshold' => 500,
-    'name' => 'Experienced Fighter',
-    'description' => 'A seasoned warrior',
-]);
-```
-
-### Checking Level Progression
-
-Level progression is automatically checked when XP is awarded. You can also manually check:
-
-```php
-use LaravelFunLab\Services\MetricLevelService;
-
-$levelService = app(MetricLevelService::class);
-
-// Get current level
-$currentLevel = $levelService->getCurrentLevel($user, 'combat-xp');
-
-// Get next level threshold
-$nextThreshold = $levelService->getNextLevelThreshold($user, 'combat-xp');
-
-// Get progress percentage
-$progress = $levelService->getProgressPercentage($user, 'combat-xp');
-```
-
-### MetricLevelGroups
-
-MetricLevelGroups combine multiple GamedMetrics to create composite leveling systems. For example, a "Total Player Level" that combines Combat + Crafting + Social XP.
-
-```php
-use LaravelFunLab\Models\MetricLevelGroup;
-use LaravelFunLab\Models\MetricLevelGroupMetric;
-use LaravelFunLab\Models\MetricLevelGroupLevel;
-
-// Create a group
-$totalLevelGroup = MetricLevelGroup::create([
-    'name' => 'Total Player Level',
-    'slug' => 'total-player-level',
-    'description' => 'Combined level from all activities',
-]);
-
-// Add metrics to the group with weights
-MetricLevelGroupMetric::create([
-    'metric_level_group_id' => $totalLevelGroup->id,
-    'gamed_metric_id' => $combatMetric->id,
-    'weight' => 1.0, // Full weight
-]);
-
-$craftingMetric = GamedMetric::findBySlug('crafting-xp');
-MetricLevelGroupMetric::create([
-    'metric_level_group_id' => $totalLevelGroup->id,
-    'gamed_metric_id' => $craftingMetric->id,
-    'weight' => 0.8, // 80% weight
-]);
-
-// Define group levels based on combined XP
-MetricLevelGroupLevel::create([
-    'metric_level_group_id' => $totalLevelGroup->id,
-    'level' => 1,
-    'xp_threshold' => 0,
-    'name' => 'Beginner',
-]);
-
-MetricLevelGroupLevel::create([
-    'metric_level_group_id' => $totalLevelGroup->id,
-    'level' => 2,
-    'xp_threshold' => 1000,
-    'name' => 'Intermediate',
-]);
-```
-
-### Getting Group Level Information
-
-```php
-use LaravelFunLab\Services\MetricLevelGroupService;
-
-$groupService = app(MetricLevelGroupService::class);
-
-// Get total combined XP
-$totalXp = $groupService->getTotalXp($user, 'total-player-level');
-
-// Get current level
-$currentLevel = $groupService->getCurrentLevel($user, 'total-player-level');
-
-// Get level info
-$levelInfo = $groupService->getLevelInfo($user, 'total-player-level');
-// Returns: ['current_level' => 2, 'total_xp' => 1500, 'next_level_threshold' => 5000, 'progress_percentage' => 30.0]
-```
-
-### Example: RPG-Style Leveling System
-
-```php
-use LaravelFunLab\Facades\LFL;
-use LaravelFunLab\Models\GamedMetric;
-use LaravelFunLab\Models\MetricLevel;
-
-// Setup metrics
-$combatMetric = GamedMetric::create(['name' => 'Combat XP', 'slug' => 'combat-xp', 'active' => true]);
-$magicMetric = GamedMetric::create(['name' => 'Magic XP', 'slug' => 'magic-xp', 'active' => true]);
-$stealthMetric = GamedMetric::create(['name' => 'Stealth XP', 'slug' => 'stealth-xp', 'active' => true]);
-
-// Define levels for Combat
-for ($level = 1; $level <= 10; $level++) {
-    MetricLevel::create([
-        'gamed_metric_id' => $combatMetric->id,
-        'level' => $level,
-        'xp_threshold' => ($level - 1) * 100,
-        'name' => "Combat Level {$level}",
-    ]);
-}
-
-// Award XP when user completes combat action
-public function completeCombat(User $user, int $xpGained)
-{
-    LFL::awardGamedMetric($user, 'combat-xp', $xpGained);
-    
-    // Level progression is automatically checked
-    // You can listen to events or check level after awarding
-}
+$totalProfiles = Profile::count();
+$profilesWithAchievement = Profile::where('achievement_count', '>', 0)->count();
+$completionRate = ($profilesWithAchievement / $totalProfiles) * 100;
 ```
 
 ## Common Patterns
 
-### Award Points on Model Events
+### Award XP on Task Completion
 
 ```php
-use LaravelFunLab\Facades\LFL;
-
-class Task extends Model
+class TaskController extends Controller
 {
-    protected static function booted()
+    public function complete(Task $task)
     {
-        static::created(function ($task) {
-            LFL::awardPoints(
-                $task->user,
-                10,
-                "Created task: {$task->title}",
-                'task-system'
-            );
-        });
+        $task->markAsComplete();
         
-        static::updated(function ($task) {
-            if ($task->isDirty('completed_at') && $task->completed_at) {
-                LFL::awardPoints(
-                    $task->user,
-                    50,
-                    "Completed task: {$task->title}",
-                    'task-system'
-                );
-            }
-        });
+        // Award XP based on task difficulty
+        $xp = match($task->difficulty) {
+            'easy' => 10,
+            'medium' => 25,
+            'hard' => 50,
+            default => 10,
+        };
+        
+        LFL::awardGamedMetric(auth()->user(), 'task-xp', $xp);
+        
+        return back()->with('success', "Task completed! +{$xp} XP");
     }
 }
 ```
 
-### Conditional Achievement Based on Points
+### Grant Achievement on First Action
 
 ```php
-use LaravelFunLab\Facades\LFL;
-
-class User extends Authenticatable
+class LoginController extends Controller
 {
-    use Awardable;
+    public function login(Request $request)
+    {
+        // ... authentication logic
+        
+        $user = auth()->user();
+        
+        // Grant first-login achievement if not already granted
+        if (!$user->hasAchievement('first-login')) {
+            LFL::grantAchievement($user, 'first-login', 'First successful login', 'auth');
+        }
+        
+        return redirect()->intended();
+    }
+}
+```
+
+### Daily Login Bonus
+
+```php
+class DailyBonusService
+{
+    public function checkAndAwardBonus(User $user): void
+    {
+        $profile = $user->getProfile();
+        
+        // Check if already awarded today
+        if ($profile->last_activity_at?->isToday()) {
+            return;
+        }
+        
+        // Award daily bonus XP
+        LFL::awardGamedMetric($user, 'daily-xp', 10);
+    }
+}
+```
+
+### Event-Driven Awards
+
+```php
+// In EventServiceProvider
+Event::listen(OrderCompleted::class, function ($event) {
+    $xp = (int) ($event->order->total / 10); // 1 XP per $10 spent
     
-    public function awardPoints($amount, $reason, $source)
-    {
-        $result = LFL::awardPoints($this, $amount, $reason, $source);
-        
-        // Check for milestone achievements
-        $totalPoints = $this->getTotalPoints();
-        
-        if ($totalPoints >= 1000 && !$this->hasAchievement('power-user')) {
-            LFL::grantAchievement($this, 'power-user', 'reached 1000 points', 'system');
-        }
-        
-        return $result;
-    }
-}
-```
+    LFL::awardGamedMetric($event->order->user, 'shopping-xp', $xp);
+});
 
-### Daily Streak Tracking
-
-```php
-use LaravelFunLab\Facades\LFL;
-use Carbon\Carbon;
-
-class DailyCheckIn
-{
-    public function checkIn(User $user)
-    {
-        $lastCheckIn = $user->last_check_in_at;
-        $streak = $user->current_streak ?? 0;
-        
-        if ($lastCheckIn && $lastCheckIn->isToday()) {
-            return; // Already checked in today
-        }
-        
-        if ($lastCheckIn && $lastCheckIn->isYesterday()) {
-            $streak++;
-        } else {
-            $streak = 1;
-        }
-        
-        $user->update([
-            'last_check_in_at' => Carbon::now(),
-            'current_streak' => $streak,
-        ]);
-        
-        // Award points with streak bonus
-        $basePoints = 10;
-        $bonusMultiplier = LFL::getMultiplier('streak_bonus');
-        $points = $basePoints * (1 + ($streak - 1) * ($bonusMultiplier - 1));
-        
-        LFL::awardPoints($user, $points, "Daily check-in (streak: {$streak})", 'check-in');
-        
-        // Grant streak achievements
-        if ($streak === 7 && !$user->hasAchievement('week-streak')) {
-            LFL::grantAchievement($user, 'week-streak', '7 day streak', 'check-in');
-        }
-    }
-}
-```
-
-### Event Listeners
-
-```php
-use LaravelFunLab\Events\PointsAwarded;
-use LaravelFunLab\Events\AchievementUnlocked;
-
-class AwardNotificationListener
-{
-    public function handle(PointsAwarded $event)
-    {
-        // Send notification when points are awarded
-        $event->recipient->notify(
-            new PointsAwardedNotification($event->amount, $event->reason)
-        );
-    }
+Event::listen(ReviewSubmitted::class, function ($event) {
+    LFL::awardGamedMetric($event->review->user, 'community-xp', 5);
     
-    public function handleAchievement(AchievementUnlocked $event)
-    {
-        // Send notification when achievement is unlocked
-        $event->recipient->notify(
-            new AchievementUnlockedNotification($event->achievement)
-        );
+    // Grant achievement for first review
+    if (!$event->review->user->hasAchievement('first-review')) {
+        LFL::grantAchievement($event->review->user, 'first-review');
     }
-}
+});
 ```
-
-### API Integration
-
-```php
-use LaravelFunLab\Facades\LFL;
-
-class ApiController extends Controller
-{
-    public function awardPoints(Request $request)
-    {
-        $user = $request->user();
-        
-        $result = LFL::awardPoints(
-            $user,
-            $request->input('amount'),
-            $request->input('reason'),
-            'api'
-        );
-        
-        return response()->json([
-            'success' => $result->success,
-            'points' => $result->award->amount ?? null,
-            'total' => $user->getTotalPoints(),
-        ]);
-    }
-}
-```
-
-## Next Steps
-
-- [API Reference](api.md) - Complete API documentation
-- [Configuration Reference](configuration.md) - All configuration options
-- [Extension Guide](extending.md) - Custom implementations and hooks
-

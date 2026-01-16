@@ -15,7 +15,7 @@ use LaravelFunLab\Contracts\LeaderboardServiceContract;
 use LaravelFunLab\Enums\AwardType;
 use LaravelFunLab\Models\Achievement;
 use LaravelFunLab\Models\GamedMetric;
-use LaravelFunLab\Services\GamedMetricService;
+use LaravelFunLab\Models\ProfileMetric;
 use LaravelFunLab\ValueObjects\AwardResult;
 
 /**
@@ -439,7 +439,7 @@ class AwardEngine implements AwardEngineContract
      * @param  Model  $recipient  The entity receiving XP
      * @param  string|GamedMetric  $gamedMetric  GamedMetric slug or model instance
      * @param  int  $amount  Amount of XP to award
-     * @return \LaravelFunLab\Models\UserGamedMetric The updated UserGamedMetric record
+     * @return ProfileMetric The updated ProfileMetric record
      *
      * @example LFL::awardGamedMetric($user, 'combat-xp', 100)
      * @example LFL::awardGamedMetric($user, $combatMetric, 50)
@@ -448,7 +448,7 @@ class AwardEngine implements AwardEngineContract
         Model $recipient,
         string|GamedMetric $gamedMetric,
         int $amount
-    ): \LaravelFunLab\Models\UserGamedMetric {
+    ): ProfileMetric {
         return $this->gamedMetricService->awardXp($recipient, $gamedMetric, $amount);
     }
 }

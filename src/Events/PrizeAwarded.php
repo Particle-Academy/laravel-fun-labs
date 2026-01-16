@@ -10,7 +10,7 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 use LaravelFunLab\Contracts\LflEvent;
 use LaravelFunLab\Enums\AwardType;
-use LaravelFunLab\Models\Award;
+use LaravelFunLab\Models\PrizeGrant;
 
 /**
  * PrizeAwarded Event
@@ -24,14 +24,14 @@ class PrizeAwarded implements LflEvent
 
     /**
      * @param  Model  $recipient  The entity that received the prize
-     * @param  Award  $award  The award record that was created
+     * @param  PrizeGrant|Model  $award  The PrizeGrant record that was created
      * @param  string|null  $reason  Why the prize was awarded
      * @param  string|null  $source  Where the prize came from
      * @param  array<string, mixed>  $meta  Additional prize metadata
      */
     public function __construct(
         public Model $recipient,
-        public Award $award,
+        public PrizeGrant|Model $award,
         public ?string $reason = null,
         public ?string $source = null,
         public array $meta = [],

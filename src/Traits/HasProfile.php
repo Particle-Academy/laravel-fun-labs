@@ -13,6 +13,10 @@ use LaravelFunLab\Models\Profile;
  * Apply this trait to any Eloquent model that uses the Awardable trait
  * to enable profile management with opt-in/opt-out logic.
  *
+ * Note: This trait is automatically included when using the Awardable trait.
+ * You only need to use this trait directly if you want profile functionality
+ * without the full Awardable trait.
+ *
  * @property-read Profile|null $profile
  */
 trait HasProfile
@@ -36,7 +40,7 @@ trait HasProfile
             [],
             [
                 'is_opted_in' => true,
-                'total_points' => 0,
+                'total_xp' => 0,
                 'achievement_count' => 0,
                 'prize_count' => 0,
             ]
@@ -99,7 +103,7 @@ trait HasProfile
             // Create profile with opt-out status directly
             $profile = $this->profile()->create([
                 'is_opted_in' => false,
-                'total_points' => 0,
+                'total_xp' => 0,
                 'achievement_count' => 0,
                 'prize_count' => 0,
             ]);

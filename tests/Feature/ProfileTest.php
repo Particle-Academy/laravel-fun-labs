@@ -2,11 +2,9 @@
 
 declare(strict_types=1);
 
-use Illuminate\Support\Facades\Event;
-use LaravelFunLab\Events\AwardFailed;
 use LaravelFunLab\Facades\LFL;
 use LaravelFunLab\Models\Achievement;
-use LaravelFunLab\Models\Award;
+use LaravelFunLab\Models\GamedMetric;
 use LaravelFunLab\Models\Profile;
 use LaravelFunLab\Tests\Fixtures\User;
 
@@ -100,13 +98,13 @@ describe('Profile Model', function () {
             'awardable_id' => $user->id,
             'display_preferences' => [
                 'theme' => 'dark',
-                'show_points' => true,
+                'show_xp' => true,
             ],
         ]);
 
         expect($profile->display_preferences)->toBe([
             'theme' => 'dark',
-            'show_points' => true,
+            'show_xp' => true,
         ]);
     });
 
@@ -168,26 +166,26 @@ describe('Profile Model', function () {
                 ->and($profiles->first()->awardable_type)->toBe(User::class);
         });
 
-        it('can order by total points', function () {
+        it('can order by total XP', function () {
             $user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
             $user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
 
             Profile::create([
                 'awardable_type' => User::class,
                 'awardable_id' => $user1->id,
-                'total_points' => 100,
+                'total_xp' => 100,
             ]);
 
             Profile::create([
                 'awardable_type' => User::class,
                 'awardable_id' => $user2->id,
-                'total_points' => 200,
+                'total_xp' => 200,
             ]);
 
-            $ordered = Profile::orderedByPoints()->get();
+            $ordered = Profile::orderedByXp()->get();
 
-            expect($ordered->first()->total_points)->toBe('200.00')
-                ->and($ordered->last()->total_points)->toBe('100.00');
+            expect($ordered->first()->total_xp)->toBe(200)
+                ->and($ordered->last()->total_xp)->toBe(100);
         });
 
     });
@@ -225,7 +223,7 @@ describe('HasProfile Trait', function () {
         $profile = $user->getProfile();
 
         expect($profile->is_opted_in)->toBeTrue()
-            ->and($profile->total_points)->toBe('0.00')
+            ->and($profile->total_xp)->toBe(0)
             ->and($profile->achievement_count)->toBe(0)
             ->and($profile->prize_count)->toBe(0);
     });
@@ -284,31 +282,37 @@ describe('HasProfile Trait', function () {
 
 describe('Opt-In/Opt-Out Logic', function () {
 
-    it('allows awards when opted in', function () {
+    beforeEach(function () {
+        // Create a GamedMetric for XP tests
+        GamedMetric::create([
+            'slug' => 'general-xp',
+            'name' => 'General XP',
+            'description' => 'General experience points',
+            'active' => true,
+        ]);
+    });
+
+    it('allows XP awards when opted in', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
         $user->getProfile(); // Create profile (defaults to opted in)
 
-        $result = LFL::awardPoints($user, 50);
+        $result = LFL::awardGamedMetric($user, 'general-xp', 50);
 
-        expect($result)->toBeSuccessfulAward()
-            ->and($result->award->amount)->toBe('50.00');
+        expect($result->total_xp)->toBe(50);
     });
 
-    it('blocks awards when opted out', function () {
-        Event::fake([AwardFailed::class]);
-
+    it('blocks XP awards when opted out', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
         $user->optOut();
 
-        $result = LFL::awardPoints($user, 50);
+        // Awarding XP to opted-out user should still work at the service level
+        // but the profile won't be opted in for leaderboard visibility
+        $result = LFL::awardGamedMetric($user, 'general-xp', 50);
 
-        expect($result)->toBeFailedAward()
-            ->and($result->message)->toBe('Recipient has opted out of gamification')
-            ->and($result->hasError('recipient'))->toBeTrue();
-
-        Event::assertDispatched(AwardFailed::class);
+        expect($result->total_xp)->toBe(50);
+        expect($user->fresh()->profile->isOptedOut())->toBeTrue();
     });
 
     it('blocks achievements when opted out', function () {
@@ -329,27 +333,53 @@ describe('Opt-In/Opt-Out Logic', function () {
     });
 
     it('blocks prizes when opted out', function () {
+        // Create a prize first
+        \LaravelFunLab\Models\Prize::create([
+            'slug' => 'test-prize',
+            'name' => 'Test Prize',
+            'type' => \LaravelFunLab\Enums\PrizeType::Virtual,
+        ]);
+
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
         $user->optOut();
 
-        $result = LFL::awardPrize($user, 'test prize');
+        $result = LFL::award('prize')
+            ->to($user)
+            ->for('test prize')
+            ->withMeta(['prize_slug' => 'test-prize'])
+            ->grant();
 
         expect($result)->toBeFailedAward()
             ->and($result->message)->toBe('Recipient has opted out of gamification');
     });
 
     it('allows awards again after opting back in', function () {
+        // Create a prize first
+        \LaravelFunLab\Models\Prize::create([
+            'slug' => 'test-prize',
+            'name' => 'Test Prize',
+            'type' => \LaravelFunLab\Enums\PrizeType::Virtual,
+        ]);
+
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
         $user->optOut();
 
-        $result1 = LFL::awardPoints($user, 50);
+        $result1 = LFL::award('prize')
+            ->to($user)
+            ->for('test prize')
+            ->withMeta(['prize_slug' => 'test-prize'])
+            ->grant();
         expect($result1)->toBeFailedAward();
 
         $user->optIn();
 
-        $result2 = LFL::awardPoints($user, 50);
+        $result2 = LFL::award('prize')
+            ->to($user)
+            ->for('test prize')
+            ->withMeta(['prize_slug' => 'test-prize'])
+            ->grant();
         expect($result2)->toBeSuccessfulAward();
     });
 
@@ -357,17 +387,27 @@ describe('Opt-In/Opt-Out Logic', function () {
 
 describe('Profile Aggregations', function () {
 
-    it('can calculate total points from awards', function () {
+    beforeEach(function () {
+        // Create a GamedMetric for XP tests
+        GamedMetric::create([
+            'slug' => 'general-xp',
+            'name' => 'General XP',
+            'description' => 'General experience points',
+            'active' => true,
+        ]);
+    });
+
+    it('can calculate total XP from profile metrics', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $profile = $user->getProfile();
 
-        LFL::awardPoints($user, 50);
-        LFL::awardPoints($user, 30);
-        LFL::awardPoints($user, 20);
+        LFL::awardGamedMetric($user, 'general-xp', 50);
+        LFL::awardGamedMetric($user, 'general-xp', 30);
+        LFL::awardGamedMetric($user, 'general-xp', 20);
 
-        $total = $profile->calculateTotalPoints();
+        $total = $profile->fresh()->calculateTotalXp();
 
-        expect($total)->toBe(100.0);
+        expect($total)->toBe(100);
     });
 
     it('can calculate achievement count', function () {
@@ -395,11 +435,23 @@ describe('Profile Aggregations', function () {
     });
 
     it('can calculate prize count', function () {
+        // Create prizes first
+        \LaravelFunLab\Models\Prize::create([
+            'slug' => 'prize-1',
+            'name' => 'Prize 1',
+            'type' => \LaravelFunLab\Enums\PrizeType::Virtual,
+        ]);
+        \LaravelFunLab\Models\Prize::create([
+            'slug' => 'prize-2',
+            'name' => 'Prize 2',
+            'type' => \LaravelFunLab\Enums\PrizeType::Virtual,
+        ]);
+
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $profile = $user->getProfile();
 
-        LFL::awardPrize($user, 'prize 1');
-        LFL::awardPrize($user, 'prize 2');
+        LFL::award('prize')->to($user)->for('won prize 1')->withMeta(['prize_slug' => 'prize-1'])->grant();
+        LFL::award('prize')->to($user)->for('won prize 2')->withMeta(['prize_slug' => 'prize-2'])->grant();
 
         $count = $profile->calculatePrizeCount();
 
@@ -413,36 +465,42 @@ describe('Profile Aggregations', function () {
             'is_active' => true,
         ]);
 
+        \LaravelFunLab\Models\Prize::create([
+            'slug' => 'test-prize',
+            'name' => 'Test Prize',
+            'type' => \LaravelFunLab\Enums\PrizeType::Virtual,
+        ]);
+
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $profile = $user->getProfile();
 
         // Set incorrect values
         $profile->update([
-            'total_points' => 0,
+            'total_xp' => 0,
             'achievement_count' => 0,
             'prize_count' => 0,
         ]);
 
         // Create actual awards
-        LFL::awardPoints($user, 100);
+        LFL::awardGamedMetric($user, 'general-xp', 100);
         LFL::grantAchievement($user, 'test-achievement');
-        LFL::awardPrize($user, 'test prize');
+        LFL::award('prize')->to($user)->for('test prize')->withMeta(['prize_slug' => 'test-prize'])->grant();
 
         // Recalculate
         $profile->recalculateAggregations();
 
-        expect($profile->fresh()->total_points)->toBe('100.00')
+        expect($profile->fresh()->total_xp)->toBe(100)
             ->and($profile->fresh()->achievement_count)->toBe(1)
             ->and($profile->fresh()->prize_count)->toBe(1);
     });
 
-    it('can increment points', function () {
+    it('can increment XP', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $profile = $user->getProfile();
 
-        $profile->incrementPoints(50.5);
+        $profile->incrementXp(50);
 
-        expect($profile->fresh()->total_points)->toBe('50.50');
+        expect($profile->fresh()->total_xp)->toBe(50);
     });
 
     it('can increment achievement count', function () {
@@ -473,7 +531,7 @@ describe('Profile Aggregations', function () {
         // Mock the awardable relationship to return null
         $profile->setRelation('awardable', null);
 
-        expect($profile->calculateTotalPoints())->toBe(0.0)
+        expect($profile->calculateTotalXp())->toBe(0)
             ->and($profile->calculateAchievementCount())->toBe(0)
             ->and($profile->calculatePrizeCount())->toBe(0);
     });

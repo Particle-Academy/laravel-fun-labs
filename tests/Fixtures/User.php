@@ -6,7 +6,6 @@ namespace LaravelFunLab\Tests\Fixtures;
 
 use Illuminate\Database\Eloquent\Model;
 use LaravelFunLab\Traits\Awardable;
-use LaravelFunLab\Traits\HasProfile;
 
 /**
  * Test User Model
@@ -17,7 +16,6 @@ use LaravelFunLab\Traits\HasProfile;
 class User extends Model
 {
     use Awardable;
-    use HasProfile;
 
     protected $fillable = ['name', 'email'];
 

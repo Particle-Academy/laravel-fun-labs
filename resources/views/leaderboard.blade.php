@@ -9,7 +9,7 @@
     <div style="margin-bottom: 20px;">
         <form method="GET" style="display: flex; gap: 10px; align-items: center;">
             <select name="by" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                <option value="points" {{ $sortBy === 'points' ? 'selected' : '' }}>Points</option>
+                <option value="xp" {{ $sortBy === 'xp' ? 'selected' : '' }}>XP</option>
                 <option value="achievements" {{ $sortBy === 'achievements' ? 'selected' : '' }}>Achievements</option>
                 <option value="prizes" {{ $sortBy === 'prizes' ? 'selected' : '' }}>Prizes</option>
             </select>
@@ -28,7 +28,7 @@
             <tr>
                 <th>Rank</th>
                 <th>User</th>
-                <th>Points</th>
+                <th>Total XP</th>
                 <th>Achievements</th>
                 <th>Prizes</th>
             </tr>
@@ -42,7 +42,7 @@
                             {{ $profile->awardable->name ?? 'User #' . $profile->awardable_id }}
                         </a>
                     </td>
-                    <td>{{ number_format((float) $profile->total_points, 0) }}</td>
+                    <td>{{ number_format((int) $profile->total_xp, 0) }}</td>
                     <td>{{ $profile->achievement_count }}</td>
                     <td>{{ $profile->prize_count }}</td>
                 </tr>

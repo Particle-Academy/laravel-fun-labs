@@ -6,10 +6,10 @@ namespace LaravelFunLab\Services;
 
 use Illuminate\Database\Eloquent\Model;
 use LaravelFunLab\Facades\LFL;
-use LaravelFunLab\Models\GamedMetric;
 use LaravelFunLab\Models\MetricLevelGroup;
 use LaravelFunLab\Models\MetricLevelGroupLevel;
-use LaravelFunLab\Models\UserGamedMetric;
+use LaravelFunLab\Models\Profile;
+use LaravelFunLab\Models\ProfileMetric;
 
 /**
  * MetricLevelGroupService
@@ -37,20 +37,26 @@ class MetricLevelGroupService
             return 0;
         }
 
+        // Get the profile for this awardable
+        $profile = Profile::where('awardable_type', get_class($awardable))
+            ->where('awardable_id', $awardable->getKey())
+            ->first();
+
+        if ($profile === null) {
+            return 0;
+        }
+
         $totalXp = 0;
-        $awardableType = get_class($awardable);
-        $awardableId = $awardable->getKey();
 
         // Sum XP from all metrics in the group with their weights
         foreach ($groupModel->metrics as $groupMetric) {
-            $userMetric = UserGamedMetric::where('awardable_type', $awardableType)
-                ->where('awardable_id', $awardableId)
+            $profileMetric = ProfileMetric::where('profile_id', $profile->id)
                 ->where('gamed_metric_id', $groupMetric->gamed_metric_id)
                 ->first();
 
-            if ($userMetric !== null) {
+            if ($profileMetric !== null) {
                 // Apply weight to XP
-                $weightedXp = (int) ($userMetric->total_xp * $groupMetric->weight);
+                $weightedXp = (int) ($profileMetric->total_xp * $groupMetric->weight);
                 $totalXp += $weightedXp;
             }
         }
@@ -273,4 +279,3 @@ class MetricLevelGroupService
         ];
     }
 }
-

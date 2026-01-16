@@ -5,16 +5,16 @@ declare(strict_types=1);
 namespace LaravelFunLab\Http\Controllers\Web;
 
 use Illuminate\Http\Request;
-use LaravelFunLab\Http\Controllers\Controller;
 use Illuminate\Support\Str;
+use LaravelFunLab\Http\Controllers\Controller;
 use LaravelFunLab\Models\Achievement;
-use LaravelFunLab\Models\Award;
 use LaravelFunLab\Models\GamedMetric;
 use LaravelFunLab\Models\MetricLevel;
 use LaravelFunLab\Models\MetricLevelGroup;
 use LaravelFunLab\Models\MetricLevelGroupLevel;
 use LaravelFunLab\Models\Prize;
 use LaravelFunLab\Models\Profile;
+use LaravelFunLab\Models\ProfileMetric;
 
 /**
  * AdminController
@@ -34,8 +34,8 @@ class AdminController extends Controller
             'total_profiles' => Profile::count(),
             'total_achievements' => Achievement::count(),
             'total_prizes' => Prize::count(),
-            'total_awards' => Award::count(),
-            'total_points_awarded' => Award::where('type', 'points')->sum('amount'),
+            'total_gamed_metrics' => GamedMetric::count(),
+            'total_xp_awarded' => Profile::sum('total_xp'),
         ];
 
         return view('lfl::admin.index', [
@@ -283,24 +283,23 @@ class AdminController extends Controller
     {
         $period = $request->input('period', '30'); // days
 
-        // Awards over time
-        $awardsOverTime = Award::query()
-            ->selectRaw('DATE(created_at) as date, COUNT(*) as count, SUM(amount) as total_points')
-            ->where('created_at', '>=', now()->subDays((int) $period))
-            ->where('type', 'points')
+        // XP awarded over time (via ProfileMetric updates)
+        $xpOverTime = ProfileMetric::query()
+            ->selectRaw('DATE(updated_at) as date, COUNT(*) as count, SUM(total_xp) as total_xp')
+            ->where('updated_at', '>=', now()->subDays((int) $period))
             ->groupBy('date')
             ->orderBy('date')
             ->get();
 
         // Top earners
         $topEarners = Profile::query()
-            ->orderByDesc('total_points')
+            ->orderByDesc('total_xp')
             ->limit(10)
             ->with('awardable')
             ->get();
 
         return view('lfl::admin.analytics', [
-            'awardsOverTime' => $awardsOverTime,
+            'xpOverTime' => $xpOverTime,
             'topEarners' => $topEarners,
             'period' => $period,
         ]);

@@ -10,10 +10,11 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 use LaravelFunLab\Contracts\LflEvent;
 use LaravelFunLab\Enums\AwardType;
-use LaravelFunLab\Models\Award;
 
 /**
  * BadgeAwarded Event
+ *
+ * @deprecated Badges should be implemented as Achievements. Use AchievementUnlocked event instead.
  *
  * Dispatched whenever a badge is awarded to an entity.
  * Contains full context for badge display and analytics.
@@ -24,14 +25,14 @@ class BadgeAwarded implements LflEvent
 
     /**
      * @param  Model  $recipient  The entity that received the badge
-     * @param  Award  $award  The award record that was created
+     * @param  Model  $award  The award record that was created
      * @param  string|null  $reason  Badge identifier or reason
      * @param  string|null  $source  Where the badge came from
      * @param  array<string, mixed>  $meta  Additional badge metadata (icon, color, etc.)
      */
     public function __construct(
         public Model $recipient,
-        public Award $award,
+        public Model $award,
         public ?string $reason = null,
         public ?string $source = null,
         public array $meta = [],

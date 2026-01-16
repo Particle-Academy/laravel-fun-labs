@@ -12,7 +12,9 @@ Laravel Fun Lab (LFL) is an analytics-driven gamification layer for Laravel appl
 ## Features
 
 - 🎯 **Event-Driven Architecture** - Every action, reward, or update is an observable event
-- 🏆 **Flexible Award System** - Points, achievements, badges, and prizes
+- 🎮 **GamedMetrics XP System** - Create independent XP buckets with automatic level progression
+- 🏆 **Achievements & Badges** - Define and grant achievements with auto-unlock on level-up
+- 🎁 **Prizes** - Reward users with virtual or physical prizes
 - 📊 **Built-in Analytics** - Query aggregate engagement data for behavioral insights
 - 🎮 **Optional UI Layer** - Drop-in Blade/Livewire components (or use API-only)
 - 🔌 **Extensible** - Macros, hooks, and custom implementations
@@ -41,7 +43,7 @@ This will:
 
 ### 1. Add the Awardable Trait
 
-Add the `Awardable` trait to your User model (or any model you want to track):
+Add the `Awardable` trait to any model you want to gamify (User, Team, Organization, etc.):
 
 ```php
 use LaravelFunLab\Traits\Awardable;
@@ -52,67 +54,111 @@ class User extends Authenticatable
     
     // ... your existing code
 }
+
+// Works with any model!
+class Team extends Model
+{
+    use Awardable;
+}
 ```
 
-### 2. Award Points
+The `Awardable` trait gives your model a **Profile** that tracks XP, achievements, and prizes. Profiles are automatically created when needed.
 
-Use the fluent API to award points:
+### 2. Create GamedMetrics (XP Categories)
+
+GamedMetrics are independent XP buckets. Each metric tracks its own XP and levels:
 
 ```php
 use LaravelFunLab\Facades\LFL;
 
-// Award points with full context
-$result = LFL::award('points')
-    ->to($user)
-    ->for('completed task')
-    ->from('task-system')
-    ->amount(50)
-    ->grant();
+// Create XP categories via setup()
+LFL::setup(
+    a: 'gamed-metric',
+    slug: 'combat-xp',
+    name: 'Combat XP',
+    description: 'Experience from combat activities'
+);
 
-// Or use the shorthand method
-LFL::awardPoints($user, 100, 'first login', 'auth');
+LFL::setup(
+    a: 'gamed-metric',
+    slug: 'crafting-xp',
+    name: 'Crafting XP',
+    description: 'Experience from crafting items'
+);
 ```
 
-### 3. Grant Achievements
+### 3. Award XP
 
-Set up achievements dynamically and grant them:
+Award XP using the `awardGamedMetric()` method:
+
+```php
+use LaravelFunLab\Facades\LFL;
+
+// Award XP to a specific GamedMetric
+$profileMetric = LFL::awardGamedMetric($user, 'combat-xp', 50);
+
+// XP accumulates per metric and on the profile
+echo $profileMetric->total_xp; // 50
+echo $user->getProfile()->total_xp; // Total across all metrics
+```
+
+### 4. Set Up and Grant Achievements
+
+Create achievements that can be granted manually or auto-unlock on level-up:
 
 ```php
 // Define an achievement
 LFL::setup(
     an: 'first-login',
-    for: 'User',
     name: 'First Login',
     description: 'Welcome! You\'ve logged in for the first time.',
     icon: 'star'
 );
 
 // Grant the achievement
-LFL::grantAchievement($user, 'first-login', 'completed first login', 'auth');
+$result = LFL::grantAchievement($user, 'first-login', 'completed first login', 'auth');
+
+// Check if user has an achievement
+if ($user->hasAchievement('first-login')) {
+    // ...
+}
 ```
 
-### 4. Query Analytics
+### 5. Award Prizes
 
-Get insights into user engagement:
+Prizes are special rewards that can be tracked and redeemed:
 
 ```php
-use Carbon\Carbon;
+// Create a prize
+LFL::setup(
+    a: 'prize',
+    slug: 'premium-access',
+    name: '1 Month Premium Access',
+    type: 'virtual'
+);
 
-// Total points awarded this month
-$totalPoints = LFL::analytics()
-    ->byType('points')
-    ->period('monthly')
-    ->total();
+// Award the prize
+LFL::award('prize')
+    ->to($user)
+    ->for('won monthly contest')
+    ->withMeta(['prize_slug' => 'premium-access'])
+    ->grant();
+```
 
-// Active users in the last 7 days
-$activeUsers = LFL::analytics()
-    ->since(Carbon::now()->subDays(7))
-    ->activeUsers();
+### 6. Query Profiles and Leaderboards
 
-// Achievement completion rate
-$completionRate = LFL::analytics()
-    ->forAchievement('first-login')
-    ->achievementCompletionRate();
+```php
+// Get user's profile
+$profile = $user->getProfile();
+echo $profile->total_xp;
+echo $profile->achievement_count;
+echo $profile->prize_count;
+
+// Leaderboard by XP
+$leaders = LFL::leaderboard()
+    ->for(User::class)
+    ->by('xp')
+    ->take(10);
 ```
 
 ## Documentation

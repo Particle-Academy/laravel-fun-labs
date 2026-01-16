@@ -7,28 +7,25 @@ namespace LaravelFunLab\Traits;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use LaravelFunLab\Models\Achievement;
 use LaravelFunLab\Models\AchievementGrant;
-use LaravelFunLab\Models\Award;
+use LaravelFunLab\Models\GamedMetric;
+use LaravelFunLab\Models\PrizeGrant;
+use LaravelFunLab\Models\Profile;
 
 /**
  * Awardable Trait
  *
  * Apply this trait to any Eloquent model to enable gamification features.
- * Provides relationships and helper methods for receiving points, achievements, and prizes.
+ * Provides relationships and helper methods for receiving XP, achievements, and prizes.
  *
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Award> $awards
+ * This trait automatically includes HasProfile functionality for profile management.
+ *
+ * @property-read Profile|null $profile
  * @property-read \Illuminate\Database\Eloquent\Collection<int, AchievementGrant> $achievementGrants
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, PrizeGrant> $prizeGrants
  */
 trait Awardable
 {
-    /**
-     * Get all awards (points/badges) granted to this model.
-     *
-     * @return MorphMany<Award, $this>
-     */
-    public function awards(): MorphMany
-    {
-        return $this->morphMany(Award::class, 'awardable');
-    }
+    use HasProfile;
 
     /**
      * Get all achievement grants for this model.
@@ -41,20 +38,53 @@ trait Awardable
     }
 
     /**
-     * Get total points accumulated by this model.
+     * Get all prize grants for this model.
      *
-     * @param  string|null  $type  Optional award type to filter by
+     * @return MorphMany<PrizeGrant, $this>
      */
-    public function getTotalPoints(?string $type = 'points'): int|float
+    public function prizeGrants(): MorphMany
     {
-        $query = $this->awards();
+        return $this->morphMany(PrizeGrant::class, 'awardable');
+    }
 
-        if ($type !== null) {
-            $query->where('type', $type);
+    /**
+     * Get total XP accumulated by this model across all GamedMetrics.
+     */
+    public function getTotalXp(): int
+    {
+        return $this->profile?->total_xp ?? 0;
+    }
+
+    /**
+     * Get XP for a specific GamedMetric.
+     *
+     * @param  string|GamedMetric  $gamedMetric  GamedMetric slug or model instance
+     */
+    public function getXpFor(string|GamedMetric $gamedMetric): int
+    {
+        $profile = $this->profile;
+
+        if (! $profile) {
+            return 0;
         }
 
-        // PostgreSQL returns string from sum(), so cast to float
-        return (float) $query->sum('amount');
+        return $profile->getXpFor($gamedMetric);
+    }
+
+    /**
+     * Get current level for a specific GamedMetric.
+     *
+     * @param  string|GamedMetric  $gamedMetric  GamedMetric slug or model instance
+     */
+    public function getLevelFor(string|GamedMetric $gamedMetric): int
+    {
+        $profile = $this->profile;
+
+        if (! $profile) {
+            return 1;
+        }
+
+        return $profile->getLevelFor($gamedMetric);
     }
 
     /**
@@ -90,29 +120,19 @@ trait Awardable
     }
 
     /**
-     * Get award count by type.
-     *
-     * @param  string  $type  The award type to count
+     * Get achievement count for this model.
      */
-    public function getAwardCount(string $type): int
+    public function getAchievementCount(): int
     {
-        return $this->awards()
-            ->where('type', $type)
-            ->count();
+        return $this->achievementGrants()->count();
     }
 
     /**
-     * Get the most recent awards.
-     *
-     * @param  int  $limit  Number of awards to return
-     * @return \Illuminate\Database\Eloquent\Collection<int, Award>
+     * Get prize count for this model.
      */
-    public function getRecentAwards(int $limit = 10): \Illuminate\Database\Eloquent\Collection
+    public function getPrizeCount(): int
     {
-        return $this->awards()
-            ->latest()
-            ->limit($limit)
-            ->get();
+        return $this->prizeGrants()->count();
     }
 
     /**

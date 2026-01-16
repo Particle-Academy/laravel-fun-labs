@@ -178,6 +178,8 @@ All features are enabled by default. Disable features you don't need:
 ],
 ```
 
+**Note:** The GamedMetrics system (XP buckets, MetricLevels, MetricLevelGroups) is always available and does not have a separate feature flag. These models and services are core to the multi-bucket XP progression system.
+
 ### Default Point Values
 
 **Key:** `defaults`

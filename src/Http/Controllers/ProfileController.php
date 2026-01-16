@@ -44,7 +44,7 @@ class ProfileController extends Controller
                 'is_opted_in' => $profile->is_opted_in,
                 'display_preferences' => $profile->display_preferences,
                 'visibility_settings' => $profile->visibility_settings,
-                'total_points' => (float) $profile->total_points,
+                'total_xp' => (int) $profile->total_xp,
                 'achievement_count' => $profile->achievement_count,
                 'prize_count' => $profile->prize_count,
                 'last_activity_at' => $profile->last_activity_at?->toIso8601String(),

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Pagination\LengthAwarePaginator;
 use LaravelFunLab\Facades\LFL;
+use LaravelFunLab\Models\GamedMetric;
 use LaravelFunLab\Tests\Fixtures\User;
 
 /*
@@ -18,6 +19,16 @@ use LaravelFunLab\Tests\Fixtures\User;
 
 describe('LeaderboardBuilder', function () {
 
+    beforeEach(function () {
+        // Create a default GamedMetric for XP tests
+        GamedMetric::create([
+            'slug' => 'general-xp',
+            'name' => 'General XP',
+            'description' => 'General experience points',
+            'active' => true,
+        ]);
+    });
+
     it('returns a leaderboard builder instance', function () {
         $builder = LFL::leaderboard();
 
@@ -31,8 +42,8 @@ describe('LeaderboardBuilder', function () {
         $profile1 = $user1->getProfile();
         $profile2 = $user2->getProfile();
 
-        $profile1->update(['total_points' => 100]);
-        $profile2->update(['total_points' => 50]);
+        $profile1->update(['total_xp' => 100]);
+        $profile2->update(['total_xp' => 50]);
 
         $leaderboard = LFL::leaderboard()
             ->for(User::class)
@@ -42,7 +53,7 @@ describe('LeaderboardBuilder', function () {
             ->and($leaderboard->first()->awardable_type)->toBe(User::class);
     });
 
-    it('sorts by points by default', function () {
+    it('sorts by XP by default', function () {
         $user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
         $user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
         $user3 = User::create(['name' => 'User 3', 'email' => 'user3@example.com']);
@@ -51,16 +62,16 @@ describe('LeaderboardBuilder', function () {
         $profile2 = $user2->getProfile();
         $profile3 = $user3->getProfile();
 
-        $profile1->update(['total_points' => 50]);
-        $profile2->update(['total_points' => 100]);
-        $profile3->update(['total_points' => 75]);
+        $profile1->update(['total_xp' => 50]);
+        $profile2->update(['total_xp' => 100]);
+        $profile3->update(['total_xp' => 75]);
 
         $leaderboard = LFL::leaderboard()
             ->for(User::class)
             ->get();
 
-        expect($leaderboard->first()->total_points)->toBe('100.00')
-            ->and($leaderboard->last()->total_points)->toBe('50.00');
+        expect($leaderboard->first()->total_xp)->toBe(100)
+            ->and($leaderboard->last()->total_xp)->toBe(50);
     });
 
     it('can sort by achievements', function () {
@@ -108,15 +119,15 @@ describe('LeaderboardBuilder', function () {
         $profile1 = $user1->getProfile();
         $profile2 = $user2->getProfile();
 
-        $profile1->update(['total_points' => 100]);
-        $profile2->update(['total_points' => 50, 'is_opted_in' => false]);
+        $profile1->update(['total_xp' => 100]);
+        $profile2->update(['total_xp' => 50, 'is_opted_in' => false]);
 
         $leaderboard = LFL::leaderboard()
             ->for(User::class)
             ->get();
 
         expect($leaderboard)->toHaveCount(1)
-            ->and($leaderboard->first()->total_points)->toBe('100.00');
+            ->and($leaderboard->first()->total_xp)->toBe(100);
     });
 
     it('can include opted-out profiles when explicitly requested', function () {
@@ -126,8 +137,8 @@ describe('LeaderboardBuilder', function () {
         $profile1 = $user1->getProfile();
         $profile2 = $user2->getProfile();
 
-        $profile1->update(['total_points' => 100]);
-        $profile2->update(['total_points' => 50, 'is_opted_in' => false]);
+        $profile1->update(['total_xp' => 100]);
+        $profile2->update(['total_xp' => 50, 'is_opted_in' => false]);
 
         $leaderboard = LFL::leaderboard()
             ->for(User::class)
@@ -146,9 +157,9 @@ describe('LeaderboardBuilder', function () {
         $profile2 = $user2->getProfile();
         $profile3 = $user3->getProfile();
 
-        $profile1->update(['total_points' => 50]);
-        $profile2->update(['total_points' => 100]);
-        $profile3->update(['total_points' => 75]);
+        $profile1->update(['total_xp' => 50]);
+        $profile2->update(['total_xp' => 100]);
+        $profile3->update(['total_xp' => 75]);
 
         $leaderboard = LFL::leaderboard()
             ->for(User::class)
@@ -164,7 +175,7 @@ describe('LeaderboardBuilder', function () {
         $users = [];
         for ($i = 1; $i <= 5; $i++) {
             $users[] = User::create(['name' => "User {$i}", 'email' => "user{$i}@example.com"]);
-            $users[$i - 1]->getProfile()->update(['total_points' => $i * 10]);
+            $users[$i - 1]->getProfile()->update(['total_xp' => $i * 10]);
         }
 
         $paginator = LFL::leaderboard()
@@ -184,7 +195,7 @@ describe('LeaderboardBuilder', function () {
         $users = [];
         for ($i = 1; $i <= 5; $i++) {
             $users[] = User::create(['name' => "User {$i}", 'email' => "user{$i}@example.com"]);
-            $users[$i - 1]->getProfile()->update(['total_points' => $i * 10]);
+            $users[$i - 1]->getProfile()->update(['total_xp' => $i * 10]);
         }
 
         $paginator = LFL::leaderboard()
@@ -202,7 +213,7 @@ describe('LeaderboardBuilder', function () {
         $users = [];
         for ($i = 1; $i <= 5; $i++) {
             $users[] = User::create(['name' => "User {$i}", 'email' => "user{$i}@example.com"]);
-            $users[$i - 1]->getProfile()->update(['total_points' => $i * 10]);
+            $users[$i - 1]->getProfile()->update(['total_xp' => $i * 10]);
         }
 
         $leaderboard = LFL::leaderboard()
@@ -223,27 +234,18 @@ describe('LeaderboardBuilder', function () {
             $profile1 = $user1->getProfile();
             $profile2 = $user2->getProfile();
 
-            // Award points today
-            LFL::awardPoints($user1, 50, 'today activity');
-            LFL::awardPoints($user2, 30, 'today activity');
-
-            // Award points yesterday (should be excluded)
-            $yesterday = now()->subDay();
-            \LaravelFunLab\Models\Award::create([
-                'awardable_type' => User::class,
-                'awardable_id' => $user1->id,
-                'type' => 'points',
-                'amount' => 100,
-                'created_at' => $yesterday,
-            ]);
+            // Award XP today (creates ProfileMetric records)
+            LFL::awardGamedMetric($user1, 'general-xp', 50);
+            LFL::awardGamedMetric($user2, 'general-xp', 30);
 
             $leaderboard = LFL::leaderboard()
                 ->for(User::class)
                 ->period('daily')
                 ->get();
 
-            // Should only include today's points
-            expect($leaderboard->first()->awardable_id)->toBe($user1->id);
+            // Should include today's XP
+            expect($leaderboard)->toHaveCount(2)
+                ->and($leaderboard->first()->awardable_id)->toBe($user1->id);
         });
 
         it('filters by weekly period', function () {
@@ -253,9 +255,9 @@ describe('LeaderboardBuilder', function () {
             $profile1 = $user1->getProfile();
             $profile2 = $user2->getProfile();
 
-            // Award points this week
-            LFL::awardPoints($user1, 50, 'this week');
-            LFL::awardPoints($user2, 30, 'this week');
+            // Award XP this week
+            LFL::awardGamedMetric($user1, 'general-xp', 50);
+            LFL::awardGamedMetric($user2, 'general-xp', 30);
 
             $leaderboard = LFL::leaderboard()
                 ->for(User::class)
@@ -272,9 +274,9 @@ describe('LeaderboardBuilder', function () {
             $profile1 = $user1->getProfile();
             $profile2 = $user2->getProfile();
 
-            // Award points this month
-            LFL::awardPoints($user1, 50, 'this month');
-            LFL::awardPoints($user2, 30, 'this month');
+            // Award XP this month
+            LFL::awardGamedMetric($user1, 'general-xp', 50);
+            LFL::awardGamedMetric($user2, 'general-xp', 30);
 
             $leaderboard = LFL::leaderboard()
                 ->for(User::class)
@@ -291,8 +293,8 @@ describe('LeaderboardBuilder', function () {
             $profile1 = $user1->getProfile();
             $profile2 = $user2->getProfile();
 
-            $profile1->update(['total_points' => 100]);
-            $profile2->update(['total_points' => 50]);
+            $profile1->update(['total_xp' => 100]);
+            $profile2->update(['total_xp' => 50]);
 
             $leaderboard1 = LFL::leaderboard()
                 ->for(User::class)
@@ -304,8 +306,8 @@ describe('LeaderboardBuilder', function () {
                 ->period('all-time')
                 ->get();
 
-            expect($leaderboard1->first()->total_points)->toBe('100.00')
-                ->and($leaderboard2->first()->total_points)->toBe('100.00');
+            expect($leaderboard1->first()->total_xp)->toBe(100)
+                ->and($leaderboard2->first()->total_xp)->toBe(100);
         });
 
     });
