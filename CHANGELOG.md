@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-01-XX
+
+### Fixed
+
+- **MetricLevelGroup Logic Alignment**
+  - Fixed structural misalignment between MetricLevel and MetricLevelGroup patterns
+  - MetricLevelGroup now uses ProfileMetricGroup to store level progression state, matching ProfileMetric pattern
+  - Group level progression is now stored persistently instead of calculated dynamically
+
+### Added
+
+- **ProfileMetricGroup Model**
+  - New model to track level progression for MetricLevelGroups per Profile
+  - Stores `current_level` for each profile/group combination
+  - Mirrors ProfileMetric structure for consistency
+  - Migration: `2024_01_01_000017_create_lfl_profile_metric_groups_table.php`
+
+- **MetricLevelGroupService Enhancements**
+  - `checkProgression()` now accepts ProfileMetricGroup and updates stored state
+  - `getCurrentLevel()` uses stored ProfileMetricGroup.current_level with fallback
+  - Added `getOrCreateProfileMetricGroup()` helper method
+  - Automatic group progression checking when XP is awarded to metrics in groups
+
+- **GamedMetricService Integration**
+  - Automatically checks group progression after awarding XP to any metric
+  - Finds all groups containing the metric and updates their progression
+
+- **Admin UI Updates**
+  - MetricLevelGroups view now shows ProfileMetricGroup statistics
+  - Displays count of profiles tracking each group
+
+- **Tests**
+  - Comprehensive test suite for ProfileMetricGroup model
+  - Tests for stored level progression and automatic group checking
+  - 5 new test cases in MetricLevelGroupTest.php
+
+### Changed
+
+- **MetricLevelGroupLevel Model**
+  - Added `scopeForGroup()` method to match MetricLevel::scopeForMetric() pattern
+
+- **MetricLevelGroup Model**
+  - Added `profileMetricGroups()` relationship
+
+## [Unreleased]
+
 ### Added
 
 - **Installation Workflow** (Story #6)
