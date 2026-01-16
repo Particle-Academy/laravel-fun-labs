@@ -183,18 +183,20 @@ describe('Prize Model', function () {
             $user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
             $user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
 
-            // Grant prizes to exhaust inventory
+            // Get profiles for the users
+            $profile1 = $user1->getProfile();
+            $profile2 = $user2->getProfile();
+
+            // Grant prizes to exhaust inventory using profile_id
             PrizeGrant::create([
                 'prize_id' => $prize->id,
-                'awardable_type' => User::class,
-                'awardable_id' => $user1->id,
+                'profile_id' => $profile1->id,
                 'status' => RedemptionStatus::Pending,
             ]);
 
             PrizeGrant::create([
                 'prize_id' => $prize->id,
-                'awardable_type' => User::class,
-                'awardable_id' => $user2->id,
+                'profile_id' => $profile2->id,
                 'status' => RedemptionStatus::Pending,
             ]);
 
@@ -211,12 +213,12 @@ describe('Prize Model', function () {
             ]);
 
             $user = User::create(['name' => 'User', 'email' => 'user@example.com']);
+            $profile = $user->getProfile();
 
             // Create a cancelled grant (should not count against inventory)
             PrizeGrant::create([
                 'prize_id' => $prize->id,
-                'awardable_type' => User::class,
-                'awardable_id' => $user->id,
+                'profile_id' => $profile->id,
                 'status' => RedemptionStatus::Cancelled,
             ]);
 
@@ -238,11 +240,11 @@ describe('PrizeGrant Model', function () {
         ]);
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        $profile = $user->getProfile();
 
         $grant = PrizeGrant::create([
             'prize_id' => $prize->id,
-            'awardable_type' => User::class,
-            'awardable_id' => $user->id,
+            'profile_id' => $profile->id,
             'status' => RedemptionStatus::Pending,
         ]);
 
@@ -259,11 +261,11 @@ describe('PrizeGrant Model', function () {
         ]);
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        $profile = $user->getProfile();
 
         $grant = PrizeGrant::create([
             'prize_id' => $prize->id,
-            'awardable_type' => User::class,
-            'awardable_id' => $user->id,
+            'profile_id' => $profile->id,
             'status' => RedemptionStatus::Pending,
         ]);
 
@@ -271,7 +273,7 @@ describe('PrizeGrant Model', function () {
             ->and($grant->prize->id)->toBe($prize->id);
     });
 
-    it('has polymorphic relationship to awardable', function () {
+    it('has relationship to profile', function () {
         $prize = Prize::create([
             'slug' => 'test-prize',
             'name' => 'Test Prize',
@@ -279,16 +281,16 @@ describe('PrizeGrant Model', function () {
         ]);
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        $profile = $user->getProfile();
 
         $grant = PrizeGrant::create([
             'prize_id' => $prize->id,
-            'awardable_type' => User::class,
-            'awardable_id' => $user->id,
+            'profile_id' => $profile->id,
             'status' => RedemptionStatus::Pending,
         ]);
 
-        expect($grant->awardable)->toBeInstanceOf(User::class)
-            ->and($grant->awardable->id)->toBe($user->id);
+        expect($grant->profile)->toBeInstanceOf(\LaravelFunLab\Models\Profile::class)
+            ->and($grant->profile->id)->toBe($profile->id);
     });
 
     it('defaults to pending status', function () {
@@ -299,11 +301,11 @@ describe('PrizeGrant Model', function () {
         ]);
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        $profile = $user->getProfile();
 
         $grant = PrizeGrant::create([
             'prize_id' => $prize->id,
-            'awardable_type' => User::class,
-            'awardable_id' => $user->id,
+            'profile_id' => $profile->id,
         ]);
 
         expect($grant->status)->toBe(RedemptionStatus::Pending);
@@ -317,11 +319,11 @@ describe('PrizeGrant Model', function () {
         ]);
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        $profile = $user->getProfile();
 
         $grant = PrizeGrant::create([
             'prize_id' => $prize->id,
-            'awardable_type' => User::class,
-            'awardable_id' => $user->id,
+            'profile_id' => $profile->id,
             'status' => RedemptionStatus::Pending,
         ]);
 
@@ -339,11 +341,11 @@ describe('PrizeGrant Model', function () {
         ]);
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        $profile = $user->getProfile();
 
         $grant = PrizeGrant::create([
             'prize_id' => $prize->id,
-            'awardable_type' => User::class,
-            'awardable_id' => $user->id,
+            'profile_id' => $profile->id,
             'status' => RedemptionStatus::Claimed,
         ]);
 
@@ -361,11 +363,11 @@ describe('PrizeGrant Model', function () {
         ]);
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
+        $profile = $user->getProfile();
 
         $grant = PrizeGrant::create([
             'prize_id' => $prize->id,
-            'awardable_type' => User::class,
-            'awardable_id' => $user->id,
+            'profile_id' => $profile->id,
             'status' => RedemptionStatus::Pending,
         ]);
 
@@ -385,24 +387,25 @@ describe('PrizeGrant Model', function () {
         $user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
         $user3 = User::create(['name' => 'User 3', 'email' => 'user3@example.com']);
 
+        $profile1 = $user1->getProfile();
+        $profile2 = $user2->getProfile();
+        $profile3 = $user3->getProfile();
+
         PrizeGrant::create([
             'prize_id' => $prize->id,
-            'awardable_type' => User::class,
-            'awardable_id' => $user1->id,
+            'profile_id' => $profile1->id,
             'status' => RedemptionStatus::Pending,
         ]);
 
         PrizeGrant::create([
             'prize_id' => $prize->id,
-            'awardable_type' => User::class,
-            'awardable_id' => $user2->id,
+            'profile_id' => $profile2->id,
             'status' => RedemptionStatus::Claimed,
         ]);
 
         PrizeGrant::create([
             'prize_id' => $prize->id,
-            'awardable_type' => User::class,
-            'awardable_id' => $user3->id,
+            'profile_id' => $profile3->id,
             'status' => RedemptionStatus::Fulfilled,
         ]);
 

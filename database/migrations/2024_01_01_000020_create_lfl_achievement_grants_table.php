@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Creates the achievement_grants table for tracking awarded achievements.
+ * Links achievements to profiles (not directly to awardable models).
  * Table name uses configurable prefix from lfl.table_prefix config.
  */
 return new class extends Migration
@@ -29,6 +30,14 @@ return new class extends Migration
     }
 
     /**
+     * Get the profiles table name with prefix.
+     */
+    protected function profilesTable(): string
+    {
+        return config('lfl.table_prefix', 'lfl_').'profiles';
+    }
+
+    /**
      * Run the migrations.
      */
     public function up(): void
@@ -36,22 +45,26 @@ return new class extends Migration
         Schema::create($this->tableName(), function (Blueprint $table) {
             $table->id();
 
+            // Foreign key to profile
+            $table->foreignId('profile_id')
+                ->constrained($this->profilesTable())
+                ->cascadeOnDelete();
+
             // Foreign key to achievement
             $table->foreignId('achievement_id')
                 ->constrained($this->achievementsTable())
                 ->cascadeOnDelete();
 
-            // Polymorphic relationship to any awardable model
-            $table->morphs('awardable');
-
             // Grant details
+            $table->string('reason')->nullable();
+            $table->string('source')->nullable();
             $table->json('meta')->nullable();
             $table->timestamp('granted_at');
 
             $table->timestamps();
 
-            // Unique constraint: each awardable can only have one grant per achievement
-            $table->unique(['achievement_id', 'awardable_type', 'awardable_id'], 'unique_achievement_grant');
+            // Unique constraint: each profile can only have one grant per achievement
+            $table->unique(['profile_id', 'achievement_id'], 'unique_achievement_grant');
 
             // Indexes
             $table->index('granted_at');

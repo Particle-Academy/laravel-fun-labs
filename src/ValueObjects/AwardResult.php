@@ -17,19 +17,19 @@ readonly class AwardResult
 {
     /**
      * @param  bool  $success  Whether the award operation succeeded
-     * @param  AwardType|string  $type  The type of award that was attempted
+     * @param  string|null  $message  Human-readable result message
      * @param  Model|null  $award  The created award/achievement/prize model (null on failure)
      * @param  Model|null  $recipient  The entity that received the award
-     * @param  string|null  $message  Human-readable result message
+     * @param  AwardType|string|null  $type  The type of award that was attempted
      * @param  array<string, mixed>  $errors  Validation or processing errors
      * @param  array<string, mixed>  $meta  Additional metadata about the award operation
      */
     public function __construct(
         public bool $success,
-        public AwardType|string $type,
+        public ?string $message = null,
         public ?Model $award = null,
         public ?Model $recipient = null,
-        public ?string $message = null,
+        public AwardType|string|null $type = null,
         public array $errors = [],
         public array $meta = [],
     ) {}
@@ -37,23 +37,25 @@ readonly class AwardResult
     /**
      * Create a successful award result.
      *
-     * @param  array<string, mixed>  $meta
+     * @param  Model  $award  The awarded model
+     * @param  string|null  $message  Optional success message
+     * @param  Model|null  $recipient  The recipient
+     * @param  AwardType|string|null  $type  The award type
+     * @param  array<string, mixed>  $meta  Additional metadata
      */
     public static function success(
-        AwardType|string $type,
         Model $award,
-        Model $recipient,
         ?string $message = null,
+        ?Model $recipient = null,
+        AwardType|string|null $type = null,
         array $meta = [],
     ): self {
-        $typeLabel = $type instanceof AwardType ? $type->label() : \LaravelFunLab\Registries\AwardTypeRegistry::getName($type);
-
         return new self(
             success: true,
-            type: $type,
+            message: $message ?? 'Award granted successfully',
             award: $award,
             recipient: $recipient,
-            message: $message ?? "Successfully awarded {$typeLabel}",
+            type: $type,
             meta: $meta,
         );
     }
@@ -61,22 +63,25 @@ readonly class AwardResult
     /**
      * Create a failed award result.
      *
-     * @param  array<string, mixed>  $errors
-     * @param  array<string, mixed>  $meta
+     * @param  string  $message  The error message
+     * @param  array<string, mixed>  $errors  Additional error details
+     * @param  Model|null  $recipient  The intended recipient
+     * @param  AwardType|string|null  $type  The award type that was attempted
+     * @param  array<string, mixed>  $meta  Additional metadata
      */
     public static function failure(
-        AwardType|string $type,
         string $message,
         array $errors = [],
         ?Model $recipient = null,
+        AwardType|string|null $type = null,
         array $meta = [],
     ): self {
         return new self(
             success: false,
-            type: $type,
+            message: $message,
             award: null,
             recipient: $recipient,
-            message: $message,
+            type: $type,
             errors: $errors,
             meta: $meta,
         );
@@ -104,10 +109,9 @@ readonly class AwardResult
     public function firstError(): ?string
     {
         if (empty($this->errors)) {
-            return null;
+            return $this->message;
         }
 
-        // Use array_values to avoid modifying the readonly property with reset()
         $values = array_values($this->errors);
         $first = $values[0] ?? null;
 

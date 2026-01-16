@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Creates the prize_grants table for tracking awarded prizes.
+ * Links prizes to profiles (not directly to awardable models).
  * Table name uses configurable prefix from lfl.table_prefix config.
  */
 return new class extends Migration
@@ -29,6 +30,14 @@ return new class extends Migration
     }
 
     /**
+     * Get the profiles table name with prefix.
+     */
+    protected function profilesTable(): string
+    {
+        return config('lfl.table_prefix', 'lfl_').'profiles';
+    }
+
+    /**
      * Run the migrations.
      */
     public function up(): void
@@ -36,15 +45,21 @@ return new class extends Migration
         Schema::create($this->tableName(), function (Blueprint $table) {
             $table->id();
 
+            // Foreign key to profile
+            $table->foreignId('profile_id')
+                ->constrained($this->profilesTable())
+                ->cascadeOnDelete();
+
             // Foreign key to prize
             $table->foreignId('prize_id')
                 ->constrained($this->prizesTable())
                 ->cascadeOnDelete();
 
-            // Polymorphic relationship to any awardable model
-            $table->morphs('awardable');
+            // Grant details
+            $table->string('reason')->nullable();
+            $table->string('source')->nullable();
 
-            // Redemption status (pending, claimed, fulfilled, cancelled)
+            // Redemption status (pending, claimed, fulfilled, cancelled, granted)
             $table->string('status')->default('pending');
 
             // Grant and redemption timestamps
@@ -58,7 +73,6 @@ return new class extends Migration
             $table->timestamps();
 
             // Indexes
-            // Note: morphs() already creates an index on awardable_type and awardable_id
             $table->index('status');
             $table->index('granted_at');
             $table->index('claimed_at');

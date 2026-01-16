@@ -6,6 +6,7 @@ namespace LaravelFunLab\Services;
 
 use Illuminate\Database\Eloquent\Model;
 use LaravelFunLab\Models\GamedMetric;
+use LaravelFunLab\Models\MetricLevelGroup;
 use LaravelFunLab\Models\Profile;
 use LaravelFunLab\Models\ProfileMetric;
 
@@ -17,7 +18,8 @@ use LaravelFunLab\Models\ProfileMetric;
 class GamedMetricService
 {
     public function __construct(
-        protected MetricLevelService $levelService
+        protected MetricLevelService $levelService,
+        protected MetricLevelGroupService $metricLevelGroupService
     ) {}
 
     /**
@@ -26,12 +28,18 @@ class GamedMetricService
      * @param  Model  $awardable  The entity receiving XP (must use Awardable trait)
      * @param  string|GamedMetric  $gamedMetric  GamedMetric slug or model instance
      * @param  int  $amount  Amount of XP to award
+     * @param  string|null  $reason  Why XP is being awarded
+     * @param  string|null  $source  Where the XP came from
+     * @param  array<string, mixed>  $meta  Additional metadata
      * @return ProfileMetric The updated ProfileMetric record
      */
     public function awardXp(
         Model $awardable,
         string|GamedMetric $gamedMetric,
-        int $amount
+        int $amount,
+        ?string $reason = null,
+        ?string $source = null,
+        array $meta = []
     ): ProfileMetric {
         // Resolve GamedMetric
         $metric = $gamedMetric instanceof GamedMetric
@@ -71,6 +79,14 @@ class GamedMetricService
 
         // Check for level progression
         $this->levelService->checkProgression($profileMetric);
+
+        // Check group progression for all groups containing this metric
+        $this->checkGroupProgression($profile, $metric);
+
+        // Dispatch XP awarded event
+        if (config('lfl.events.dispatch', true)) {
+            event(new \LaravelFunLab\Events\XpAwarded($profileMetric, $metric, $awardable, $amount, $reason, $source, $meta));
+        }
 
         return $profileMetric;
     }
@@ -169,5 +185,25 @@ class GamedMetricService
         return Profile::where('awardable_type', get_class($awardable))
             ->where('awardable_id', $awardable->getKey())
             ->first();
+    }
+
+    /**
+     * Check group progression for all groups containing the given metric.
+     *
+     * @param  Profile  $profile  The profile
+     * @param  GamedMetric  $metric  The metric that was updated
+     */
+    protected function checkGroupProgression(Profile $profile, GamedMetric $metric): void
+    {
+        // Find all groups that contain this metric
+        $groups = MetricLevelGroup::whereHas('metrics', function ($query) use ($metric) {
+            $query->where('gamed_metric_id', $metric->id);
+        })->get();
+
+        // Check progression for each group
+        foreach ($groups as $group) {
+            $profileMetricGroup = $this->metricLevelGroupService->getOrCreateProfileMetricGroup($profile, $group);
+            $this->metricLevelGroupService->checkProgression($profileMetricGroup);
+        }
     }
 }

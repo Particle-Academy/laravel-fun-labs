@@ -70,6 +70,18 @@ class MetricLevelGroupLevel extends Model
     }
 
     /**
+     * Scope to filter by MetricLevelGroup.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<MetricLevelGroupLevel>  $query
+     * @param  int  $metricLevelGroupId
+     * @return \Illuminate\Database\Eloquent\Builder<MetricLevelGroupLevel>
+     */
+    public function scopeForGroup($query, int $metricLevelGroupId)
+    {
+        return $query->where('metric_level_group_id', $metricLevelGroupId);
+    }
+
+    /**
      * Scope to order by level ascending.
      *
      * @param  \Illuminate\Database\Eloquent\Builder<MetricLevelGroupLevel>  $query

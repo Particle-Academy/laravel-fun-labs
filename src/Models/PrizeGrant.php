@@ -6,19 +6,19 @@ namespace LaravelFunLab\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\MorphTo;
 use LaravelFunLab\Enums\RedemptionStatus;
 
 /**
  * PrizeGrant Model
  *
- * Tracks awarded prizes per awardable entity with redemption status,
- * timestamps, and metadata. Acts as a pivot between prizes and awardable models.
+ * Tracks awarded prizes per Profile with redemption status,
+ * timestamps, and metadata. Links prizes to profiles (which link to any awardable model).
  *
  * @property int $id
+ * @property int $profile_id
  * @property int $prize_id
- * @property string $awardable_type
- * @property int $awardable_id
+ * @property string|null $reason
+ * @property string|null $source
  * @property RedemptionStatus $status
  * @property array<string, mixed>|null $meta
  * @property \Illuminate\Support\Carbon|null $granted_at
@@ -26,8 +26,8 @@ use LaravelFunLab\Enums\RedemptionStatus;
  * @property \Illuminate\Support\Carbon|null $fulfilled_at
  * @property \Illuminate\Support\Carbon $created_at
  * @property \Illuminate\Support\Carbon $updated_at
+ * @property-read Profile $profile
  * @property-read Prize $prize
- * @property-read Model $awardable
  */
 class PrizeGrant extends Model
 {
@@ -37,9 +37,10 @@ class PrizeGrant extends Model
      * @var list<string>
      */
     protected $fillable = [
+        'profile_id',
         'prize_id',
-        'awardable_type',
-        'awardable_id',
+        'reason',
+        'source',
         'status',
         'meta',
         'granted_at',
@@ -81,6 +82,16 @@ class PrizeGrant extends Model
     }
 
     /**
+     * Get the profile that received this prize.
+     *
+     * @return BelongsTo<Profile, $this>
+     */
+    public function profile(): BelongsTo
+    {
+        return $this->belongsTo(Profile::class);
+    }
+
+    /**
      * Get the prize that was granted.
      *
      * @return BelongsTo<Prize, $this>
@@ -91,13 +102,18 @@ class PrizeGrant extends Model
     }
 
     /**
-     * Get the awardable entity (User, Team, etc.).
+     * Scope to filter by profile.
      *
-     * @return MorphTo<Model, $this>
+     * @param  \Illuminate\Database\Eloquent\Builder<PrizeGrant>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<PrizeGrant>
      */
-    public function awardable(): MorphTo
+    public function scopeForProfile($query, int|Profile $profile)
     {
-        return $this->morphTo();
+        $profileId = $profile instanceof Profile
+            ? $profile->id
+            : $profile;
+
+        return $query->where('profile_id', $profileId);
     }
 
     /**
@@ -174,5 +190,20 @@ class PrizeGrant extends Model
         return $this->update([
             'status' => RedemptionStatus::Cancelled,
         ]);
+    }
+
+    /**
+     * Boot the model.
+     */
+    protected static function boot(): void
+    {
+        parent::boot();
+
+        // Auto-set granted_at if not provided
+        static::creating(function (PrizeGrant $grant) {
+            if ($grant->granted_at === null) {
+                $grant->granted_at = now();
+            }
+        });
     }
 }

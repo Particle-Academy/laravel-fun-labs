@@ -13,6 +13,7 @@ namespace LaravelFunLab\Enums;
 enum RedemptionStatus: string
 {
     case Pending = 'pending';
+    case Granted = 'granted';
     case Claimed = 'claimed';
     case Fulfilled = 'fulfilled';
     case Cancelled = 'cancelled';
@@ -24,6 +25,7 @@ enum RedemptionStatus: string
     {
         return match ($this) {
             self::Pending => 'Pending',
+            self::Granted => 'Granted',
             self::Claimed => 'Claimed',
             self::Fulfilled => 'Fulfilled',
             self::Cancelled => 'Cancelled',

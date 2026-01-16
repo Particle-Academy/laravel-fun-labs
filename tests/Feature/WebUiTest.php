@@ -139,18 +139,20 @@ describe('Web UI Routes', function () {
         });
 
         it('displays analytics page', function () {
-            // Create a GamedMetric and award XP through it
-            $metric = GamedMetric::create([
-                'slug' => 'general-xp',
-                'name' => 'General XP',
-                'description' => 'General experience points',
-                'active' => true,
-            ]);
+            // Create a GamedMetric using LFL::setup()
+            LFL::setup(
+                a: 'gamed-metric',
+                slug: 'general-xp',
+                name: 'General XP',
+                description: 'General experience points',
+                active: true
+            );
 
             $user = User::create(['name' => 'User', 'email' => 'user@example.com']);
             $user->getProfile();
 
-            LFL::awardGamedMetric($user, $metric, 50);
+            // Award XP using LFL::award()
+            LFL::award('general-xp')->to($user)->amount(50)->save();
 
             $response = $this->get('/lfl/admin/analytics');
 

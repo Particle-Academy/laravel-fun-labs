@@ -283,13 +283,14 @@ describe('HasProfile Trait', function () {
 describe('Opt-In/Opt-Out Logic', function () {
 
     beforeEach(function () {
-        // Create a GamedMetric for XP tests
-        GamedMetric::create([
-            'slug' => 'general-xp',
-            'name' => 'General XP',
-            'description' => 'General experience points',
-            'active' => true,
-        ]);
+        // Create a GamedMetric for XP tests using LFL::setup()
+        LFL::setup(
+            a: 'gamed-metric',
+            slug: 'general-xp',
+            name: 'General XP',
+            description: 'General experience points',
+            active: true
+        );
     });
 
     it('allows XP awards when opted in', function () {
@@ -297,7 +298,8 @@ describe('Opt-In/Opt-Out Logic', function () {
 
         $user->getProfile(); // Create profile (defaults to opted in)
 
-        $result = LFL::awardGamedMetric($user, 'general-xp', 50);
+        // Use the new LFL::award() API
+        $result = LFL::award('general-xp')->to($user)->amount(50)->save();
 
         expect($result->total_xp)->toBe(50);
     });
@@ -309,77 +311,78 @@ describe('Opt-In/Opt-Out Logic', function () {
 
         // Awarding XP to opted-out user should still work at the service level
         // but the profile won't be opted in for leaderboard visibility
-        $result = LFL::awardGamedMetric($user, 'general-xp', 50);
+        // Use the new LFL::award() API
+        $result = LFL::award('general-xp')->to($user)->amount(50)->save();
 
         expect($result->total_xp)->toBe(50);
         expect($user->fresh()->profile->isOptedOut())->toBeTrue();
     });
 
     it('blocks achievements when opted out', function () {
-        Achievement::create([
-            'slug' => 'test-achievement',
-            'name' => 'Test Achievement',
-            'is_active' => true,
-        ]);
+        // Create achievement using LFL::setup()
+        LFL::setup(an: 'test-achievement', name: 'Test Achievement');
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
         $user->optOut();
 
-        $result = LFL::grantAchievement($user, 'test-achievement');
+        // Use the new LFL::grant() API
+        $result = LFL::grant('test-achievement')->to($user)->save();
 
         expect($result)->toBeFailedAward()
             ->and($result->message)->toBe('Recipient has opted out of gamification');
     });
 
     it('blocks prizes when opted out', function () {
-        // Create a prize first
-        \LaravelFunLab\Models\Prize::create([
-            'slug' => 'test-prize',
-            'name' => 'Test Prize',
-            'type' => \LaravelFunLab\Enums\PrizeType::Virtual,
-        ]);
+        // Create a prize using LFL::setup()
+        LFL::setup(
+            a: 'prize',
+            slug: 'test-prize',
+            name: 'Test Prize',
+            type: 'virtual'
+        );
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
         $user->optOut();
 
-        $result = LFL::award('prize')
+        // Use the new LFL::grant() API
+        $result = LFL::grant('test-prize')
             ->to($user)
-            ->for('test prize')
-            ->withMeta(['prize_slug' => 'test-prize'])
-            ->grant();
+            ->because('test prize')
+            ->save();
 
         expect($result)->toBeFailedAward()
             ->and($result->message)->toBe('Recipient has opted out of gamification');
     });
 
     it('allows awards again after opting back in', function () {
-        // Create a prize first
-        \LaravelFunLab\Models\Prize::create([
-            'slug' => 'test-prize',
-            'name' => 'Test Prize',
-            'type' => \LaravelFunLab\Enums\PrizeType::Virtual,
-        ]);
+        // Create a prize using LFL::setup()
+        LFL::setup(
+            a: 'prize',
+            slug: 'test-prize',
+            name: 'Test Prize',
+            type: 'virtual'
+        );
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
         $user->optOut();
 
-        $result1 = LFL::award('prize')
+        // Use the new LFL::grant() API
+        $result1 = LFL::grant('test-prize')
             ->to($user)
-            ->for('test prize')
-            ->withMeta(['prize_slug' => 'test-prize'])
-            ->grant();
+            ->because('test prize')
+            ->save();
         expect($result1)->toBeFailedAward();
 
         $user->optIn();
 
-        $result2 = LFL::award('prize')
+        // Use the new LFL::grant() API
+        $result2 = LFL::grant('test-prize')
             ->to($user)
-            ->for('test prize')
-            ->withMeta(['prize_slug' => 'test-prize'])
-            ->grant();
+            ->because('test prize')
+            ->save();
         expect($result2)->toBeSuccessfulAward();
     });
 
@@ -388,22 +391,24 @@ describe('Opt-In/Opt-Out Logic', function () {
 describe('Profile Aggregations', function () {
 
     beforeEach(function () {
-        // Create a GamedMetric for XP tests
-        GamedMetric::create([
-            'slug' => 'general-xp',
-            'name' => 'General XP',
-            'description' => 'General experience points',
-            'active' => true,
-        ]);
+        // Create a GamedMetric for XP tests using LFL::setup()
+        LFL::setup(
+            a: 'gamed-metric',
+            slug: 'general-xp',
+            name: 'General XP',
+            description: 'General experience points',
+            active: true
+        );
     });
 
     it('can calculate total XP from profile metrics', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $profile = $user->getProfile();
 
-        LFL::awardGamedMetric($user, 'general-xp', 50);
-        LFL::awardGamedMetric($user, 'general-xp', 30);
-        LFL::awardGamedMetric($user, 'general-xp', 20);
+        // Use the new LFL::award() API
+        LFL::award('general-xp')->to($user)->amount(50)->save();
+        LFL::award('general-xp')->to($user)->amount(30)->save();
+        LFL::award('general-xp')->to($user)->amount(20)->save();
 
         $total = $profile->fresh()->calculateTotalXp();
 
@@ -411,23 +416,16 @@ describe('Profile Aggregations', function () {
     });
 
     it('can calculate achievement count', function () {
-        Achievement::create([
-            'slug' => 'achievement-1',
-            'name' => 'Achievement 1',
-            'is_active' => true,
-        ]);
-
-        Achievement::create([
-            'slug' => 'achievement-2',
-            'name' => 'Achievement 2',
-            'is_active' => true,
-        ]);
+        // Create achievements using LFL::setup()
+        LFL::setup(an: 'achievement-1', name: 'Achievement 1');
+        LFL::setup(an: 'achievement-2', name: 'Achievement 2');
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $profile = $user->getProfile();
 
-        LFL::grantAchievement($user, 'achievement-1');
-        LFL::grantAchievement($user, 'achievement-2');
+        // Use the new LFL::grant() API
+        LFL::grant('achievement-1')->to($user)->save();
+        LFL::grant('achievement-2')->to($user)->save();
 
         $count = $profile->calculateAchievementCount();
 
@@ -435,23 +433,16 @@ describe('Profile Aggregations', function () {
     });
 
     it('can calculate prize count', function () {
-        // Create prizes first
-        \LaravelFunLab\Models\Prize::create([
-            'slug' => 'prize-1',
-            'name' => 'Prize 1',
-            'type' => \LaravelFunLab\Enums\PrizeType::Virtual,
-        ]);
-        \LaravelFunLab\Models\Prize::create([
-            'slug' => 'prize-2',
-            'name' => 'Prize 2',
-            'type' => \LaravelFunLab\Enums\PrizeType::Virtual,
-        ]);
+        // Create prizes using LFL::setup()
+        LFL::setup(a: 'prize', slug: 'prize-1', name: 'Prize 1', type: 'virtual');
+        LFL::setup(a: 'prize', slug: 'prize-2', name: 'Prize 2', type: 'virtual');
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $profile = $user->getProfile();
 
-        LFL::award('prize')->to($user)->for('won prize 1')->withMeta(['prize_slug' => 'prize-1'])->grant();
-        LFL::award('prize')->to($user)->for('won prize 2')->withMeta(['prize_slug' => 'prize-2'])->grant();
+        // Use the new LFL::grant() API
+        LFL::grant('prize-1')->to($user)->because('won prize 1')->save();
+        LFL::grant('prize-2')->to($user)->because('won prize 2')->save();
 
         $count = $profile->calculatePrizeCount();
 
@@ -459,17 +450,11 @@ describe('Profile Aggregations', function () {
     });
 
     it('can recalculate all aggregations', function () {
-        Achievement::create([
-            'slug' => 'test-achievement',
-            'name' => 'Test Achievement',
-            'is_active' => true,
-        ]);
+        // Create achievement using LFL::setup()
+        LFL::setup(an: 'test-achievement', name: 'Test Achievement');
 
-        \LaravelFunLab\Models\Prize::create([
-            'slug' => 'test-prize',
-            'name' => 'Test Prize',
-            'type' => \LaravelFunLab\Enums\PrizeType::Virtual,
-        ]);
+        // Create prize using LFL::setup()
+        LFL::setup(a: 'prize', slug: 'test-prize', name: 'Test Prize', type: 'virtual');
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $profile = $user->getProfile();
@@ -481,10 +466,10 @@ describe('Profile Aggregations', function () {
             'prize_count' => 0,
         ]);
 
-        // Create actual awards
-        LFL::awardGamedMetric($user, 'general-xp', 100);
-        LFL::grantAchievement($user, 'test-achievement');
-        LFL::award('prize')->to($user)->for('test prize')->withMeta(['prize_slug' => 'test-prize'])->grant();
+        // Create actual awards using new API
+        LFL::award('general-xp')->to($user)->amount(100)->save();
+        LFL::grant('test-achievement')->to($user)->save();
+        LFL::grant('test-prize')->to($user)->because('test prize')->save();
 
         // Recalculate
         $profile->recalculateAggregations();

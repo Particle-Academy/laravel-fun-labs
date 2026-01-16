@@ -20,13 +20,14 @@ use LaravelFunLab\Tests\Fixtures\User;
 describe('LeaderboardBuilder', function () {
 
     beforeEach(function () {
-        // Create a default GamedMetric for XP tests
-        GamedMetric::create([
-            'slug' => 'general-xp',
-            'name' => 'General XP',
-            'description' => 'General experience points',
-            'active' => true,
-        ]);
+        // Create a default GamedMetric for XP tests using LFL::setup()
+        LFL::setup(
+            a: 'gamed-metric',
+            slug: 'general-xp',
+            name: 'General XP',
+            description: 'General experience points',
+            active: true
+        );
     });
 
     it('returns a leaderboard builder instance', function () {
@@ -234,9 +235,9 @@ describe('LeaderboardBuilder', function () {
             $profile1 = $user1->getProfile();
             $profile2 = $user2->getProfile();
 
-            // Award XP today (creates ProfileMetric records)
-            LFL::awardGamedMetric($user1, 'general-xp', 50);
-            LFL::awardGamedMetric($user2, 'general-xp', 30);
+            // Award XP today using LFL::award()
+            LFL::award('general-xp')->to($user1)->amount(50)->save();
+            LFL::award('general-xp')->to($user2)->amount(30)->save();
 
             $leaderboard = LFL::leaderboard()
                 ->for(User::class)
@@ -255,9 +256,9 @@ describe('LeaderboardBuilder', function () {
             $profile1 = $user1->getProfile();
             $profile2 = $user2->getProfile();
 
-            // Award XP this week
-            LFL::awardGamedMetric($user1, 'general-xp', 50);
-            LFL::awardGamedMetric($user2, 'general-xp', 30);
+            // Award XP this week using LFL::award()
+            LFL::award('general-xp')->to($user1)->amount(50)->save();
+            LFL::award('general-xp')->to($user2)->amount(30)->save();
 
             $leaderboard = LFL::leaderboard()
                 ->for(User::class)
@@ -274,9 +275,9 @@ describe('LeaderboardBuilder', function () {
             $profile1 = $user1->getProfile();
             $profile2 = $user2->getProfile();
 
-            // Award XP this month
-            LFL::awardGamedMetric($user1, 'general-xp', 50);
-            LFL::awardGamedMetric($user2, 'general-xp', 30);
+            // Award XP this month using LFL::award()
+            LFL::award('general-xp')->to($user1)->amount(50)->save();
+            LFL::award('general-xp')->to($user2)->amount(30)->save();
 
             $leaderboard = LFL::leaderboard()
                 ->for(User::class)

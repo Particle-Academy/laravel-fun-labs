@@ -241,13 +241,7 @@ class Profile extends Model
      */
     public function calculateAchievementCount(): int
     {
-        $awardable = $this->awardable;
-
-        if ($awardable === null || ! method_exists($awardable, 'achievementGrants')) {
-            return 0;
-        }
-
-        return $awardable->achievementGrants()->count();
+        return AchievementGrant::where('profile_id', $this->id)->count();
     }
 
     /**
@@ -255,13 +249,7 @@ class Profile extends Model
      */
     public function calculatePrizeCount(): int
     {
-        $awardable = $this->awardable;
-
-        if ($awardable === null || ! method_exists($awardable, 'prizeGrants')) {
-            return 0;
-        }
-
-        return $awardable->prizeGrants()->count();
+        return PrizeGrant::where('profile_id', $this->id)->count();
     }
 
     /**

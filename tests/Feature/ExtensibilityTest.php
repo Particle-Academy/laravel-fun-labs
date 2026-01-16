@@ -114,12 +114,8 @@ describe('Award Validation Pipeline', function () {
     beforeEach(function () {
         AwardValidationPipeline::flush();
 
-        // Create an achievement for testing
-        Achievement::create([
-            'slug' => 'test-achievement',
-            'name' => 'Test Achievement',
-            'is_active' => true,
-        ]);
+        // Create an achievement for testing using LFL::setup()
+        LFL::setup(an: 'test-achievement', name: 'Test Achievement');
     });
 
     it('passes validation when no steps are registered', function () {
@@ -223,11 +219,11 @@ describe('Award Validation Pipeline', function () {
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        $result = LFL::award('achievement')
+        // Use the new LFL::grant() API
+        $result = LFL::grant('test-achievement')
             ->to($user)
-            ->achievement('test-achievement')
-            ->for('blocked')
-            ->grant();
+            ->because('blocked')
+            ->save();
 
         expect($result->failed())->toBeTrue()
             ->and($result->message)->toContain('Award blocked');
@@ -240,11 +236,11 @@ describe('Award Validation Pipeline', function () {
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        $result = LFL::award('achievement')
+        // Use the new LFL::grant() API
+        $result = LFL::grant('test-achievement')
             ->to($user)
-            ->achievement('test-achievement')
-            ->for('allowed')
-            ->grant();
+            ->because('allowed')
+            ->save();
 
         expect($result->succeeded())->toBeTrue();
     });
@@ -288,26 +284,30 @@ describe('Award Validation Pipeline', function () {
 
 describe('GamedMetric XP System', function () {
     beforeEach(function () {
-        GamedMetric::create([
-            'slug' => 'combat-xp',
-            'name' => 'Combat XP',
-            'description' => 'Experience from combat',
-            'active' => true,
-        ]);
+        // Create GamedMetrics using LFL::setup()
+        LFL::setup(
+            a: 'gamed-metric',
+            slug: 'combat-xp',
+            name: 'Combat XP',
+            description: 'Experience from combat',
+            active: true
+        );
 
-        GamedMetric::create([
-            'slug' => 'crafting-xp',
-            'name' => 'Crafting XP',
-            'description' => 'Experience from crafting',
-            'active' => true,
-        ]);
+        LFL::setup(
+            a: 'gamed-metric',
+            slug: 'crafting-xp',
+            name: 'Crafting XP',
+            description: 'Experience from crafting',
+            active: true
+        );
     });
 
     it('can award XP to different GamedMetrics', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        $combatResult = LFL::awardGamedMetric($user, 'combat-xp', 100);
-        $craftingResult = LFL::awardGamedMetric($user, 'crafting-xp', 50);
+        // Use the new LFL::award() API
+        $combatResult = LFL::award('combat-xp')->to($user)->amount(100)->save();
+        $craftingResult = LFL::award('crafting-xp')->to($user)->amount(50)->save();
 
         expect($combatResult->total_xp)->toBe(100)
             ->and($craftingResult->total_xp)->toBe(50);
@@ -316,8 +316,9 @@ describe('GamedMetric XP System', function () {
     it('accumulates XP within the same GamedMetric', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        LFL::awardGamedMetric($user, 'combat-xp', 100);
-        LFL::awardGamedMetric($user, 'combat-xp', 50);
+        // Use the new LFL::award() API
+        LFL::award('combat-xp')->to($user)->amount(100)->save();
+        LFL::award('combat-xp')->to($user)->amount(50)->save();
 
         $profile = $user->getProfile()->fresh();
         $combatXp = $profile->getXpFor('combat-xp');
@@ -328,8 +329,9 @@ describe('GamedMetric XP System', function () {
     it('tracks total XP across all metrics', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        LFL::awardGamedMetric($user, 'combat-xp', 100);
-        LFL::awardGamedMetric($user, 'crafting-xp', 50);
+        // Use the new LFL::award() API
+        LFL::award('combat-xp')->to($user)->amount(100)->save();
+        LFL::award('crafting-xp')->to($user)->amount(50)->save();
 
         $profile = $user->getProfile()->fresh();
 
@@ -337,6 +339,7 @@ describe('GamedMetric XP System', function () {
     });
 
     it('throws exception for inactive GamedMetric', function () {
+        // Create an inactive GamedMetric
         GamedMetric::create([
             'slug' => 'inactive-xp',
             'name' => 'Inactive XP',
@@ -346,14 +349,16 @@ describe('GamedMetric XP System', function () {
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        expect(fn () => LFL::awardGamedMetric($user, 'inactive-xp', 100))
+        // Use the new LFL::award() API - should throw exception
+        expect(fn () => LFL::award('inactive-xp')->to($user)->amount(100)->save())
             ->toThrow(\InvalidArgumentException::class);
     });
 
     it('throws exception for non-existent GamedMetric', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        expect(fn () => LFL::awardGamedMetric($user, 'non-existent', 100))
+        // Use the new LFL::award() API - should throw exception
+        expect(fn () => LFL::award('non-existent')->to($user)->amount(100)->save())
             ->toThrow(\InvalidArgumentException::class);
     });
 });

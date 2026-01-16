@@ -42,18 +42,19 @@ describe('Analytics Filtering', function () {
         $this->user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
         $this->user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
 
-        // Create a GamedMetric for XP
-        GamedMetric::create([
-            'slug' => 'general-xp',
-            'name' => 'General XP',
-            'description' => 'General experience points',
-            'active' => true,
-        ]);
+        // Create a GamedMetric for XP using LFL::setup()
+        LFL::setup(
+            a: 'gamed-metric',
+            slug: 'general-xp',
+            name: 'General XP',
+            description: 'General experience points',
+            active: true
+        );
 
-        // Create some XP awards
-        LFL::awardGamedMetric($this->user1, 'general-xp', 50);
-        LFL::awardGamedMetric($this->user2, 'general-xp', 30);
-        LFL::awardGamedMetric($this->user1, 'general-xp', 20);
+        // Create some XP awards using LFL::award()
+        LFL::award('general-xp')->to($this->user1)->amount(50)->save();
+        LFL::award('general-xp')->to($this->user2)->amount(30)->save();
+        LFL::award('general-xp')->to($this->user1)->amount(20)->save();
     });
 
     it('can count total XP awarded', function () {
@@ -91,17 +92,19 @@ describe('Analytics Aggregations', function () {
         $this->user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
         $this->user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
 
-        // Create a GamedMetric for XP
-        GamedMetric::create([
-            'slug' => 'general-xp',
-            'name' => 'General XP',
-            'description' => 'General experience points',
-            'active' => true,
-        ]);
+        // Create a GamedMetric for XP using LFL::setup()
+        LFL::setup(
+            a: 'gamed-metric',
+            slug: 'general-xp',
+            name: 'General XP',
+            description: 'General experience points',
+            active: true
+        );
 
-        LFL::awardGamedMetric($this->user1, 'general-xp', 50);
-        LFL::awardGamedMetric($this->user2, 'general-xp', 30);
-        LFL::awardGamedMetric($this->user1, 'general-xp', 20);
+        // Award XP using LFL::award()
+        LFL::award('general-xp')->to($this->user1)->amount(50)->save();
+        LFL::award('general-xp')->to($this->user2)->amount(30)->save();
+        LFL::award('general-xp')->to($this->user1)->amount(20)->save();
     });
 
     it('can count total profiles', function () {
@@ -139,13 +142,14 @@ describe('Analytics Aggregations', function () {
 describe('Active Users Analytics', function () {
 
     beforeEach(function () {
-        // Create a GamedMetric for XP
-        GamedMetric::create([
-            'slug' => 'general-xp',
-            'name' => 'General XP',
-            'description' => 'General experience points',
-            'active' => true,
-        ]);
+        // Create a GamedMetric for XP using LFL::setup()
+        LFL::setup(
+            a: 'gamed-metric',
+            slug: 'general-xp',
+            name: 'General XP',
+            description: 'General experience points',
+            active: true
+        );
     });
 
     it('can count active users', function () {
@@ -153,8 +157,9 @@ describe('Active Users Analytics', function () {
         $user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
         $user3 = User::create(['name' => 'User 3', 'email' => 'user3@example.com']);
 
-        LFL::awardGamedMetric($user1, 'general-xp', 10);
-        LFL::awardGamedMetric($user2, 'general-xp', 20);
+        // Award XP using LFL::award()
+        LFL::award('general-xp')->to($user1)->amount(10)->save();
+        LFL::award('general-xp')->to($user2)->amount(20)->save();
         // user3 has no XP
 
         $activeUsers = Profile::where('total_xp', '>', 0)->count();
@@ -166,8 +171,9 @@ describe('Active Users Analytics', function () {
         $user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
         $user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
 
-        LFL::awardGamedMetric($user1, 'general-xp', 10);
-        LFL::awardGamedMetric($user2, 'general-xp', 20);
+        // Award XP using LFL::award()
+        LFL::award('general-xp')->to($user1)->amount(10)->save();
+        LFL::award('general-xp')->to($user2)->amount(20)->save();
 
         // Update one profile to be old
         $profile = Profile::first();
@@ -183,13 +189,14 @@ describe('Active Users Analytics', function () {
 describe('Achievement Completion Rate', function () {
 
     beforeEach(function () {
-        // Create a GamedMetric for XP
-        GamedMetric::create([
-            'slug' => 'general-xp',
-            'name' => 'General XP',
-            'description' => 'General experience points',
-            'active' => true,
-        ]);
+        // Create a GamedMetric for XP using LFL::setup()
+        LFL::setup(
+            a: 'gamed-metric',
+            slug: 'general-xp',
+            name: 'General XP',
+            description: 'General experience points',
+            active: true
+        );
     });
 
     it('can calculate achievement completion rate', function () {
@@ -200,15 +207,11 @@ describe('Achievement Completion Rate', function () {
         $user1->getProfile();
         $user2->getProfile();
 
-        // Create achievement
-        Achievement::create([
-            'slug' => 'first-login',
-            'name' => 'First Login',
-            'is_active' => true,
-        ]);
+        // Create achievement using LFL::setup()
+        LFL::setup(an: 'first-login', name: 'First Login');
 
-        // Grant to one user
-        LFL::grantAchievement($user1, 'first-login');
+        // Grant to one user using LFL::grant()
+        LFL::grant('first-login')->to($user1)->save();
 
         // Refresh profiles to get updated counts
         $user1->refresh();
@@ -229,21 +232,23 @@ describe('Achievement Completion Rate', function () {
 describe('Export Functionality', function () {
 
     beforeEach(function () {
-        // Create a GamedMetric for XP
-        GamedMetric::create([
-            'slug' => 'general-xp',
-            'name' => 'General XP',
-            'description' => 'General experience points',
-            'active' => true,
-        ]);
+        // Create a GamedMetric for XP using LFL::setup()
+        LFL::setup(
+            a: 'gamed-metric',
+            slug: 'general-xp',
+            name: 'General XP',
+            description: 'General experience points',
+            active: true
+        );
     });
 
     it('can export profile data', function () {
         $user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
         $user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
 
-        LFL::awardGamedMetric($user1, 'general-xp', 50);
-        LFL::awardGamedMetric($user2, 'general-xp', 30);
+        // Award XP using LFL::award()
+        LFL::award('general-xp')->to($user1)->amount(50)->save();
+        LFL::award('general-xp')->to($user2)->amount(30)->save();
 
         $data = Profile::all()->map(function ($profile) {
             return [

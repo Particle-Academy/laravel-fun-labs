@@ -6,24 +6,24 @@ namespace LaravelFunLab\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
  * AchievementGrant Model
  *
- * Tracks awarded achievements per awardable entity with grant timestamp and metadata.
- * Acts as a pivot between achievements and awardable models.
+ * Tracks awarded achievements per Profile with grant timestamp and metadata.
+ * Links achievements to profiles (which in turn link to any awardable entity).
  *
  * @property int $id
+ * @property int $profile_id
  * @property int $achievement_id
- * @property string $awardable_type
- * @property int $awardable_id
+ * @property string|null $reason
+ * @property string|null $source
  * @property array<string, mixed>|null $meta
  * @property \Illuminate\Support\Carbon $granted_at
  * @property \Illuminate\Support\Carbon $created_at
  * @property \Illuminate\Support\Carbon $updated_at
+ * @property-read Profile $profile
  * @property-read Achievement $achievement
- * @property-read Model $awardable
  */
 class AchievementGrant extends Model
 {
@@ -33,9 +33,10 @@ class AchievementGrant extends Model
      * @var list<string>
      */
     protected $fillable = [
+        'profile_id',
         'achievement_id',
-        'awardable_type',
-        'awardable_id',
+        'reason',
+        'source',
         'meta',
         'granted_at',
     ];
@@ -62,6 +63,16 @@ class AchievementGrant extends Model
     }
 
     /**
+     * Get the profile that received this achievement.
+     *
+     * @return BelongsTo<Profile, $this>
+     */
+    public function profile(): BelongsTo
+    {
+        return $this->belongsTo(Profile::class);
+    }
+
+    /**
      * Get the achievement that was granted.
      *
      * @return BelongsTo<Achievement, $this>
@@ -69,16 +80,6 @@ class AchievementGrant extends Model
     public function achievement(): BelongsTo
     {
         return $this->belongsTo(Achievement::class);
-    }
-
-    /**
-     * Get the awardable entity (User, Team, etc.).
-     *
-     * @return MorphTo<Model, $this>
-     */
-    public function awardable(): MorphTo
-    {
-        return $this->morphTo();
     }
 
     /**
@@ -97,14 +98,18 @@ class AchievementGrant extends Model
     }
 
     /**
-     * Scope to filter by awardable type.
+     * Scope to filter by profile.
      *
      * @param  \Illuminate\Database\Eloquent\Builder<AchievementGrant>  $query
      * @return \Illuminate\Database\Eloquent\Builder<AchievementGrant>
      */
-    public function scopeForAwardableType($query, string $awardableType)
+    public function scopeForProfile($query, int|Profile $profile)
     {
-        return $query->where('awardable_type', $awardableType);
+        $profileId = $profile instanceof Profile
+            ? $profile->id
+            : $profile;
+
+        return $query->where('profile_id', $profileId);
     }
 
     /**

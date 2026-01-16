@@ -25,19 +25,21 @@ use LaravelFunLab\Tests\Fixtures\User;
 describe('XP Awarded Events', function () {
 
     beforeEach(function () {
-        // Create a GamedMetric for XP tests
-        GamedMetric::create([
-            'slug' => 'general-xp',
-            'name' => 'General XP',
-            'description' => 'General experience points',
-            'active' => true,
-        ]);
+        // Create a GamedMetric for XP tests using LFL::setup()
+        LFL::setup(
+            a: 'gamed-metric',
+            slug: 'general-xp',
+            name: 'General XP',
+            description: 'General experience points',
+            active: true
+        );
     });
 
     it('can award XP to a user', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        $result = LFL::awardGamedMetric($user, 'general-xp', 50);
+        // Use the new LFL::award() API
+        $result = LFL::award('general-xp')->to($user)->amount(50)->save();
 
         expect($result->total_xp)->toBe(50);
     });
@@ -45,8 +47,9 @@ describe('XP Awarded Events', function () {
     it('accumulates XP correctly', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        LFL::awardGamedMetric($user, 'general-xp', 50);
-        LFL::awardGamedMetric($user, 'general-xp', 30);
+        // Use the new LFL::award() API
+        LFL::award('general-xp')->to($user)->amount(50)->save();
+        LFL::award('general-xp')->to($user)->amount(30)->save();
 
         $profile = $user->getProfile()->fresh();
 
@@ -58,12 +61,12 @@ describe('XP Awarded Events', function () {
 describe('AchievementUnlocked Event', function () {
 
     beforeEach(function () {
-        Achievement::create([
-            'slug' => 'first-login',
-            'name' => 'First Login',
-            'description' => 'Logged in for the first time',
-            'is_active' => true,
-        ]);
+        // Create achievement using LFL::setup()
+        LFL::setup(
+            an: 'first-login',
+            name: 'First Login',
+            description: 'Logged in for the first time'
+        );
     });
 
     it('dispatches AchievementUnlocked when achievement is granted', function () {
@@ -71,7 +74,8 @@ describe('AchievementUnlocked Event', function () {
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        LFL::grantAchievement($user, 'first-login', 'first time login', 'auth');
+        // Use the new LFL::grant() API
+        LFL::grant('first-login')->to($user)->because('first time login')->from('auth')->save();
 
         Event::assertDispatched(AchievementUnlocked::class, function ($event) use ($user) {
             return $event->recipient->is($user)
@@ -84,7 +88,8 @@ describe('AchievementUnlocked Event', function () {
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        LFL::grantAchievement($user, 'first-login');
+        // Use the new LFL::grant() API
+        LFL::grant('first-login')->to($user)->save();
 
         Event::assertDispatched(AchievementUnlocked::class, function ($event) {
             return $event->achievement->name === 'First Login'
@@ -96,7 +101,8 @@ describe('AchievementUnlocked Event', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $achievement = Achievement::where('slug', 'first-login')->first();
 
-        $result = LFL::grantAchievement($user, 'first-login');
+        // Use the new LFL::grant() API
+        $result = LFL::grant('first-login')->to($user)->save();
 
         $event = new AchievementUnlocked(
             recipient: $user,
@@ -111,7 +117,8 @@ describe('AchievementUnlocked Event', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $achievement = Achievement::where('slug', 'first-login')->first();
 
-        $result = LFL::grantAchievement($user, 'first-login');
+        // Use the new LFL::grant() API
+        $result = LFL::grant('first-login')->to($user)->save();
 
         $event = new AchievementUnlocked(
             recipient: $user,
@@ -133,11 +140,13 @@ describe('AchievementUnlocked Event', function () {
 describe('PrizeAwarded Event', function () {
 
     beforeEach(function () {
-        \LaravelFunLab\Models\Prize::create([
-            'slug' => 'test-prize',
-            'name' => 'Test Prize',
-            'type' => \LaravelFunLab\Enums\PrizeType::Virtual,
-        ]);
+        // Create prize using LFL::setup()
+        LFL::setup(
+            a: 'prize',
+            slug: 'test-prize',
+            name: 'Test Prize',
+            type: 'virtual'
+        );
     });
 
     it('dispatches PrizeAwarded when prize is awarded', function () {
@@ -146,12 +155,12 @@ describe('PrizeAwarded Event', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $user->getProfile();
 
-        LFL::award('prize')
+        // Use the new LFL::grant() API
+        LFL::grant('test-prize')
             ->to($user)
-            ->for('won a contest')
+            ->because('won a contest')
             ->from('contest-system')
-            ->withMeta(['prize_slug' => 'test-prize'])
-            ->grant();
+            ->save();
 
         Event::assertDispatched(PrizeAwarded::class, function ($event) use ($user) {
             return $event->recipient->is($user);
@@ -164,18 +173,19 @@ describe('PrizeAwarded Event', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $user->getProfile();
 
-        LFL::award('prize')
+        // Use the new LFL::grant() API
+        LFL::grant('test-prize')
             ->to($user)
-            ->for('won a contest')
+            ->because('won a contest')
             ->from('contest-system')
             ->withMeta([
-                'prize_slug' => 'test-prize',
                 'contest_id' => 123,
             ])
-            ->grant();
+            ->save();
 
         Event::assertDispatched(PrizeAwarded::class, function ($event) {
-            $meta = $event->award->meta ?? [];
+            // The PrizeAwarded event has $award property (PrizeGrant) and $meta property
+            $meta = $event->award->meta ?? $event->meta ?? [];
 
             return isset($meta['contest_id']) && $meta['contest_id'] === 123;
         });
@@ -186,11 +196,8 @@ describe('PrizeAwarded Event', function () {
 describe('Generic AwardGranted Event', function () {
 
     beforeEach(function () {
-        Achievement::create([
-            'slug' => 'test-achievement',
-            'name' => 'Test Achievement',
-            'is_active' => true,
-        ]);
+        // Create achievement using LFL::setup()
+        LFL::setup(an: 'test-achievement', name: 'Test Achievement');
     });
 
     it('dispatches both generic and specific events for achievements', function () {
@@ -198,7 +205,8 @@ describe('Generic AwardGranted Event', function () {
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        LFL::grantAchievement($user, 'test-achievement');
+        // Use the new LFL::grant() API
+        LFL::grant('test-achievement')->to($user)->save();
 
         Event::assertDispatched(AwardGranted::class);
         Event::assertDispatched(AchievementUnlocked::class);
@@ -209,7 +217,8 @@ describe('Generic AwardGranted Event', function () {
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        LFL::grantAchievement($user, 'test-achievement');
+        // Use the new LFL::grant() API
+        LFL::grant('test-achievement')->to($user)->save();
 
         Event::assertDispatched(AwardGranted::class, function ($event) {
             return $event->type === 'achievement';
@@ -221,31 +230,32 @@ describe('Generic AwardGranted Event', function () {
 describe('EventLog Model', function () {
 
     beforeEach(function () {
-        // Create a GamedMetric for XP tests
-        GamedMetric::create([
-            'slug' => 'general-xp',
-            'name' => 'General XP',
-            'description' => 'General experience points',
-            'active' => true,
-        ]);
+        // Create a GamedMetric for XP tests using LFL::setup()
+        LFL::setup(
+            a: 'gamed-metric',
+            slug: 'general-xp',
+            name: 'General XP',
+            description: 'General experience points',
+            active: true
+        );
 
-        Achievement::create([
-            'slug' => 'test-achievement',
-            'name' => 'Test Achievement',
-            'is_active' => true,
-        ]);
+        // Create achievement using LFL::setup()
+        LFL::setup(an: 'test-achievement', name: 'Test Achievement');
 
-        \LaravelFunLab\Models\Prize::create([
-            'slug' => 'test-prize',
-            'name' => 'Test Prize',
-            'type' => \LaravelFunLab\Enums\PrizeType::Virtual,
-        ]);
+        // Create prize using LFL::setup()
+        LFL::setup(
+            a: 'prize',
+            slug: 'test-prize',
+            name: 'Test Prize',
+            type: 'virtual'
+        );
     });
 
     it('logs achievement granted events to database', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        LFL::grantAchievement($user, 'test-achievement');
+        // Use the new LFL::grant() API
+        LFL::grant('test-achievement')->to($user)->save();
 
         $log = EventLog::where('event_type', 'achievement_unlocked')->first();
 
@@ -258,11 +268,11 @@ describe('EventLog Model', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $user->getProfile();
 
-        LFL::award('prize')
+        // Use the new LFL::grant() API
+        LFL::grant('test-prize')
             ->to($user)
-            ->for('test prize')
-            ->withMeta(['prize_slug' => 'test-prize'])
-            ->grant();
+            ->because('test prize')
+            ->save();
 
         $log = EventLog::where('event_type', 'prize_awarded')->first();
 
@@ -274,7 +284,12 @@ describe('EventLog Model', function () {
     it('stores full event context as JSON', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
-        LFL::grantAchievement($user, 'test-achievement', 'completed task', 'task-system');
+        // Use the new LFL::grant() API
+        LFL::grant('test-achievement')
+            ->to($user)
+            ->because('completed task')
+            ->from('task-system')
+            ->save();
 
         $log = EventLog::where('event_type', 'achievement_unlocked')->first();
 
@@ -288,12 +303,12 @@ describe('EventLog Model', function () {
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $user->getProfile();
 
-        LFL::grantAchievement($user, 'test-achievement');
-        LFL::award('prize')
+        // Use the new LFL::grant() API
+        LFL::grant('test-achievement')->to($user)->save();
+        LFL::grant('test-prize')
             ->to($user)
-            ->for('test prize')
-            ->withMeta(['prize_slug' => 'test-prize'])
-            ->grant();
+            ->because('test prize')
+            ->save();
 
         $achievementLogs = EventLog::where('award_type', 'achievement')->count();
         $prizeLogs = EventLog::where('award_type', 'prize')->count();
@@ -306,14 +321,12 @@ describe('EventLog Model', function () {
         $user1 = User::create(['name' => 'User 1', 'email' => 'user1@example.com']);
         $user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
 
-        LFL::grantAchievement($user1, 'test-achievement');
+        // Use the new LFL::grant() API
+        LFL::grant('test-achievement')->to($user1)->save();
 
-        Achievement::create([
-            'slug' => 'another-achievement',
-            'name' => 'Another Achievement',
-            'is_active' => true,
-        ]);
-        LFL::grantAchievement($user2, 'another-achievement');
+        // Create another achievement using LFL::setup()
+        LFL::setup(an: 'another-achievement', name: 'Another Achievement');
+        LFL::grant('another-achievement')->to($user2)->save();
 
         $user1Logs = EventLog::where('awardable_id', $user1->id)->count();
         $user2Logs = EventLog::where('awardable_id', $user2->id)->count();

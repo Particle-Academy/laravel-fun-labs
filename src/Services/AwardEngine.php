@@ -8,27 +8,32 @@ use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Illuminate\Support\Traits\Macroable;
-use LaravelFunLab\Builders\AwardBuilder;
+use InvalidArgumentException;
 use LaravelFunLab\Contracts\AnalyticsServiceContract;
 use LaravelFunLab\Contracts\AwardEngineContract;
 use LaravelFunLab\Contracts\LeaderboardServiceContract;
-use LaravelFunLab\Enums\AwardType;
 use LaravelFunLab\Models\Achievement;
+use LaravelFunLab\Models\AchievementGrant;
 use LaravelFunLab\Models\GamedMetric;
-use LaravelFunLab\Models\ProfileMetric;
+use LaravelFunLab\Models\MetricLevel;
+use LaravelFunLab\Models\MetricLevelGroup;
+use LaravelFunLab\Models\MetricLevelGroupLevel;
+use LaravelFunLab\Models\MetricLevelGroupMetric;
+use LaravelFunLab\Models\Prize;
+use LaravelFunLab\Models\PrizeGrant;
+use LaravelFunLab\Models\Profile;
 use LaravelFunLab\ValueObjects\AwardResult;
 
 /**
  * AwardEngine Service
  *
- * The core service that powers the LFL facade. Handles award distribution,
- * achievement setup, profile management, and leaderboard generation.
- * This is the main entry point for all gamification operations.
+ * The core service that powers the LFL facade. Provides a minimal, focused API
+ * for all gamification operations:
  *
- * Usage examples:
- * - LFL::award('points')->to($user)->for('task completion')->amount(10)->grant()
- * - LFL::award('achievement')->to($user)->achievement('first-login')->grant()
- * - LFL::awardPoints($user, 50, 'daily bonus', 'scheduler')
+ * - LFL::setup() - Create any entity (GamedMetric, MetricLevel, MetricLevelGroup, Achievement, Prize)
+ * - LFL::award() - Award XP to a GamedMetric
+ * - LFL::grant() - Grant an Achievement or Prize
+ * - LFL::hasLevel() - Check if a Profile has reached a level in a metric or group
  *
  * Macros can be registered to extend functionality:
  * - AwardEngine::macro('customMethod', fn() => ...)
@@ -40,199 +45,350 @@ class AwardEngine implements AwardEngineContract
 
     public function __construct(
         protected Application $app,
-        protected GamedMetricService $gamedMetricService
+        protected GamedMetricService $gamedMetricService,
+        protected MetricLevelService $metricLevelService,
+        protected MetricLevelGroupService $metricLevelGroupService
     ) {}
 
     /**
-     * Start building an award operation with the fluent API.
+     * Set up a new entity dynamically at runtime.
      *
-     * @param  AwardType|string  $type  The type of award (points, achievement, prize, badge)
-     * @return AwardBuilder Fluent builder for chaining
+     * Creates GamedMetrics, MetricLevels, MetricLevelGroups, Achievements, or Prizes.
+     * Uses upsert logic to create new entities or update existing ones by slug.
      *
-     * @example LFL::award('points')->to($user)->for('purchase')->amount(100)->grant()
+     * @param  string|null  $a  Entity type: 'gamed-metric', 'metric-level', 'metric-level-group', 'metric-level-group-level', 'achievement', 'prize'
+     * @param  string|null  $an  Achievement name/slug (shorthand for a:'achievement')
+     * @param  string|null  $slug  Entity slug identifier
+     * @param  string|null  $name  Human-readable display name
+     * @param  string|null  $description  Entity description
+     * @param  string|null  $icon  Icon identifier for UI display
+     * @param  string|null  $for  Awardable type restriction (achievements only)
+     * @param  string|null  $metric  GamedMetric slug (for metric-level)
+     * @param  string|null  $group  MetricLevelGroup slug (for metric-level-group-level or adding metric to group)
+     * @param  int|null  $level  Level number (for metric-level or metric-level-group-level)
+     * @param  int|null  $xp  XP threshold (for metric-level or metric-level-group-level)
+     * @param  float|null  $weight  Weight in group (for adding metric to group)
+     * @param  string|null  $type  Prize type: 'virtual', 'physical', 'coupon', 'badge', 'other'
+     * @param  int|float|null  $cost  Cost in points (for prizes)
+     * @param  int|null  $inventory  Inventory quantity (null = unlimited, for prizes)
+     * @param  array<string, mixed>  $metadata  Flexible JSON metadata
+     * @param  bool  $active  Whether the entity is active (default: true)
+     * @param  int  $order  Sort order for display (default: 0)
+     * @return Model The created or updated entity instance
+     *
+     * @example LFL::setup(an: 'first-login', description: 'Logged in for the first time')
+     * @example LFL::setup(a: 'gamed-metric', slug: 'combat-xp', name: 'Combat XP')
+     * @example LFL::setup(a: 'metric-level', metric: 'combat-xp', level: 1, xp: 100, name: 'Novice Fighter')
+     * @example LFL::setup(a: 'prize', slug: 'premium-access', name: '1 Month Premium', type: 'virtual')
      */
-    public function award(AwardType|string $type): AwardBuilder
+    public function setup(
+        ?string $a = null,
+        ?string $an = null,
+        ?string $slug = null,
+        ?string $name = null,
+        ?string $description = null,
+        ?string $icon = null,
+        ?string $for = null,
+        ?string $metric = null,
+        ?string $group = null,
+        ?int $level = null,
+        ?int $xp = null,
+        ?float $weight = null,
+        ?string $type = null,
+        int|float|null $cost = null,
+        ?int $inventory = null,
+        array $metadata = [],
+        bool $active = true,
+        int $order = 0,
+    ): Model {
+        // Shorthand: if 'an' is provided, it's an achievement
+        if ($an !== null) {
+            return $this->setupAchievement($an, $for, $name, $description, $icon, $metadata, $active, $order);
+        }
+
+        // Require entity type
+        if ($a === null) {
+            throw new InvalidArgumentException("Entity type 'a' or achievement name 'an' is required for setup()");
+        }
+
+        return match ($a) {
+            'gamed-metric', 'metric' => $this->setupGamedMetric($slug, $name, $description, $icon, $active),
+            'metric-level', 'level' => $this->setupMetricLevel($metric, $level, $xp, $name, $description),
+            'metric-level-group', 'group' => $this->setupMetricLevelGroup($slug, $name, $description),
+            'metric-level-group-level', 'group-level' => $this->setupMetricLevelGroupLevel($group, $level, $xp, $name, $description),
+            'metric-level-group-metric', 'group-metric' => $this->setupMetricLevelGroupMetric($group, $metric, $weight),
+            'achievement' => $this->setupAchievement($slug, $for, $name, $description, $icon, $metadata, $active, $order),
+            'prize' => $this->setupPrize($slug, $name, $description, $type, $cost, $inventory, $metadata, $active, $order),
+            default => throw new InvalidArgumentException("Unknown entity type: {$a}"),
+        };
+    }
+
+    /**
+     * Award XP to a GamedMetric for an awardable entity.
+     *
+     * This is the ONLY way to give XP in the system. All XP flows through GamedMetrics.
+     *
+     * @param  string  $metricSlug  The GamedMetric slug to award XP to
+     * @return AwardXpBuilder Fluent builder for chaining
+     *
+     * @example LFL::award('combat-xp')->to($user)->amount(50)->because('defeated boss')->save()
+     * @example LFL::award('crafting-xp')->to($user)->amount(10)->save()
+     */
+    public function award(string $metricSlug): AwardXpBuilder
     {
-        return new AwardBuilder($type);
+        return new AwardXpBuilder($metricSlug, $this->gamedMetricService);
     }
 
     /**
-     * Quick method to award points to an entity.
+     * Grant an Achievement or Prize to an awardable entity.
      *
-     * @param  Model  $recipient  The entity receiving points
-     * @param  int|float  $amount  Number of points to award
-     * @param  string|null  $reason  Why points are being awarded
-     * @param  string|null  $source  Where the points came from
-     * @param  array<string, mixed>  $meta  Additional metadata
+     * @param  string  $slug  The Achievement or Prize slug
+     * @return GrantBuilder Fluent builder for chaining
+     *
+     * @example LFL::grant('first-login')->to($user)->because('completed onboarding')->save()
+     * @example LFL::grant('premium-access')->to($user)->save()
      */
-    public function awardPoints(
-        Model $recipient,
-        int|float $amount = 1,
-        ?string $reason = null,
-        ?string $source = null,
-        array $meta = [],
-    ): AwardResult {
-        $builder = $this->award(AwardType::Points)
-            ->to($recipient)
-            ->amount($amount);
-
-        if ($reason !== null) {
-            $builder->for($reason);
-        }
-
-        if ($source !== null) {
-            $builder->from($source);
-        }
-
-        if (! empty($meta)) {
-            $builder->withMeta($meta);
-        }
-
-        return $builder->grant();
+    public function grant(string $slug): GrantBuilder
+    {
+        return new GrantBuilder($slug, $this);
     }
 
     /**
-     * Quick method to grant an achievement to an entity.
+     * Check if a Profile has reached a specific level in a metric or metric group.
      *
-     * @param  Model  $recipient  The entity receiving the achievement
-     * @param  string  $achievementSlug  The achievement identifier
-     * @param  string|null  $reason  Optional reason for the grant
-     * @param  string|null  $source  Where the grant originated
-     * @param  array<string, mixed>  $meta  Additional metadata
+     * Levels are never "granted" - they are thresholds based on accumulated XP.
+     * This method checks if the profile's XP meets or exceeds the level threshold.
+     *
+     * @param  Model  $awardable  The awardable entity (User, Team, etc.)
+     * @param  int  $level  The level number to check
+     * @param  string|null  $metric  GamedMetric slug to check (mutually exclusive with $group)
+     * @param  string|null  $group  MetricLevelGroup slug to check (mutually exclusive with $metric)
+     * @return bool Whether the profile has reached the specified level
+     *
+     * @example LFL::hasLevel($user, 5, metric: 'combat-xp')
+     * @example LFL::hasLevel($user, 10, group: 'overall-power')
      */
-    public function grantAchievement(
+    public function hasLevel(Model $awardable, int $level, ?string $metric = null, ?string $group = null): bool
+    {
+        if ($metric === null && $group === null) {
+            throw new InvalidArgumentException("Either 'metric' or 'group' must be specified for hasLevel()");
+        }
+
+        if ($metric !== null && $group !== null) {
+            throw new InvalidArgumentException("Only one of 'metric' or 'group' can be specified for hasLevel()");
+        }
+
+        // Get the profile
+        if (! method_exists($awardable, 'getProfile')) {
+            throw new InvalidArgumentException('Awardable must use the Awardable trait');
+        }
+
+        $profile = $awardable->getProfile();
+
+        if ($metric !== null) {
+            return $this->metricLevelService->hasReachedLevel($profile, $metric, $level);
+        }
+
+        return $this->metricLevelGroupService->hasReachedLevel($profile, $group, $level);
+    }
+
+    /**
+     * Internal: Grant an achievement to an awardable entity.
+     *
+     * @internal Used by GrantBuilder
+     */
+    public function grantAchievementInternal(
         Model $recipient,
         string $achievementSlug,
         ?string $reason = null,
         ?string $source = null,
         array $meta = [],
     ): AwardResult {
-        $builder = $this->award(AwardType::Achievement)
-            ->to($recipient)
-            ->achievement($achievementSlug);
-
-        if ($reason !== null) {
-            $builder->for($reason);
+        // Validate recipient uses Awardable trait
+        if (! method_exists($recipient, 'getProfile')) {
+            return AwardResult::failure('Recipient must use the Awardable trait');
         }
 
-        if ($source !== null) {
-            $builder->from($source);
+        // Check opt-out status
+        if (method_exists($recipient, 'isOptedOut') && $recipient->isOptedOut()) {
+            return AwardResult::failure('Recipient has opted out of gamification');
         }
 
-        if (! empty($meta)) {
-            $builder->withMeta($meta);
+        // Find the achievement
+        $achievement = Achievement::where('slug', $achievementSlug)->first();
+        if (! $achievement) {
+            return AwardResult::failure("Achievement '{$achievementSlug}' not found");
         }
 
-        return $builder->grant();
+        if (! $achievement->is_active) {
+            return AwardResult::failure("Achievement '{$achievementSlug}' is not active");
+        }
+
+        // Get the profile
+        $profile = $recipient->getProfile();
+
+        // Check if already granted
+        $existingGrant = AchievementGrant::where('profile_id', $profile->id)
+            ->where('achievement_id', $achievement->id)
+            ->first();
+
+        if ($existingGrant) {
+            return AwardResult::failure("Achievement '{$achievementSlug}' already granted");
+        }
+
+        // Create the grant
+        $grant = AchievementGrant::create([
+            'profile_id' => $profile->id,
+            'achievement_id' => $achievement->id,
+            'reason' => $reason,
+            'source' => $source,
+            'meta' => ! empty($meta) ? $meta : null,
+            'granted_at' => now(),
+        ]);
+
+        // Update profile achievement count
+        $profile->incrementAchievementCount();
+
+        // Create result for event
+        $result = AwardResult::success($grant);
+
+        // Dispatch events
+        if ($this->isEventDispatchEnabled()) {
+            event(new \LaravelFunLab\Events\AchievementUnlocked($recipient, $achievement, $grant, $reason, $source));
+            event(new \LaravelFunLab\Events\AwardGranted($result, 'achievement', $recipient, $grant));
+        }
+
+        return $result;
     }
 
     /**
-     * Quick method to award a prize to an entity.
+     * Internal: Grant a prize to an awardable entity.
      *
-     * @param  Model  $recipient  The entity receiving the prize
-     * @param  string|null  $reason  Why the prize is being awarded
-     * @param  string|null  $source  Where the prize came from
-     * @param  array<string, mixed>  $meta  Additional metadata
+     * @internal Used by GrantBuilder
      */
-    public function awardPrize(
+    public function grantPrizeInternal(
         Model $recipient,
+        string $prizeSlug,
         ?string $reason = null,
         ?string $source = null,
         array $meta = [],
     ): AwardResult {
-        $builder = $this->award(AwardType::Prize)
-            ->to($recipient);
-
-        if ($reason !== null) {
-            $builder->for($reason);
+        // Validate recipient uses Awardable trait
+        if (! method_exists($recipient, 'getProfile')) {
+            return AwardResult::failure('Recipient must use the Awardable trait');
         }
 
-        if ($source !== null) {
-            $builder->from($source);
+        // Check opt-out status
+        if (method_exists($recipient, 'isOptedOut') && $recipient->isOptedOut()) {
+            return AwardResult::failure('Recipient has opted out of gamification');
         }
 
-        if (! empty($meta)) {
-            $builder->withMeta($meta);
+        // Find the prize
+        $prize = Prize::findBySlug($prizeSlug);
+        if (! $prize) {
+            return AwardResult::failure("Prize '{$prizeSlug}' not found");
         }
 
-        return $builder->grant();
+        if (! $prize->is_active) {
+            return AwardResult::failure("Prize '{$prizeSlug}' is not active");
+        }
+
+        if (! $prize->isAvailable()) {
+            return AwardResult::failure("Prize '{$prizeSlug}' is out of inventory");
+        }
+
+        // Get the profile
+        $profile = $recipient->getProfile();
+
+        // Create the grant
+        $grant = PrizeGrant::create([
+            'profile_id' => $profile->id,
+            'prize_id' => $prize->id,
+            'reason' => $reason,
+            'source' => $source,
+            'meta' => ! empty($meta) ? $meta : null,
+            'status' => 'granted',
+            'granted_at' => now(),
+        ]);
+
+        // Update profile prize count
+        $profile->incrementPrizeCount();
+
+        // Create result for event
+        $result = AwardResult::success($grant);
+
+        // Dispatch events
+        if ($this->isEventDispatchEnabled()) {
+            event(new \LaravelFunLab\Events\PrizeAwarded($recipient, $grant, $reason, $source, $meta));
+            event(new \LaravelFunLab\Events\AwardGranted($result, 'prize', $recipient, $grant));
+        }
+
+        return $result;
     }
 
     /**
-     * Quick method to award a badge to an entity.
+     * Get or create a gamification profile for an awardable entity.
      *
-     * @param  Model  $recipient  The entity receiving the badge
-     * @param  string|null  $reason  Badge identifier or reason
-     * @param  string|null  $source  Where the badge came from
-     * @param  array<string, mixed>  $meta  Additional metadata (e.g., badge details)
+     * @param  Model  $awardable  The entity to get the profile for
+     * @return Profile|null The profile instance
      */
-    public function awardBadge(
-        Model $recipient,
-        ?string $reason = null,
-        ?string $source = null,
-        array $meta = [],
-    ): AwardResult {
-        $builder = $this->award(AwardType::Badge)
-            ->to($recipient)
-            ->amount(1);
-
-        if ($reason !== null) {
-            $builder->for($reason);
+    public function profile(Model $awardable): ?Profile
+    {
+        if (! method_exists($awardable, 'getProfile')) {
+            return null;
         }
 
-        if ($source !== null) {
-            $builder->from($source);
-        }
-
-        if (! empty($meta)) {
-            $builder->withMeta($meta);
-        }
-
-        return $builder->grant();
+        return $awardable->getProfile();
     }
 
     /**
-     * Set up a new achievement dynamically at runtime.
+     * Start building a leaderboard query with the fluent API.
      *
-     * This method allows developers to define achievements programmatically
-     * without requiring database seeding or migrations. Uses upsert logic
-     * to create new achievements or update existing ones by slug.
+     * @return LeaderboardServiceContract Fluent builder for chaining
      *
-     * @param  string  $an  Achievement name/slug identifier (required)
-     * @param  string|null  $for  Awardable type restriction (e.g., 'User', 'App\Models\User')
-     * @param  string|null  $name  Human-readable display name (defaults to formatted slug)
-     * @param  string|null  $description  Achievement description
-     * @param  string|null  $icon  Icon identifier for UI display
-     * @param  array<string, mixed>  $metadata  Flexible JSON metadata for custom attributes
-     * @param  bool  $active  Whether the achievement is active (default: true)
-     * @param  int  $order  Sort order for display (default: 0)
-     * @return Achievement The created or updated achievement instance
-     *
-     * @example LFL::setup(an: 'first-login', description: 'Logged in for the first time')
-     * @example LFL::setup(an: 'power-user', for: 'User', icon: 'bolt', metadata: ['tier' => 'gold'])
+     * @example LFL::leaderboard()->for(User::class)->by('xp')->take(10)
      */
-    public function setup(
-        string $an,
-        ?string $for = null,
-        ?string $name = null,
-        ?string $description = null,
-        ?string $icon = null,
-        array $metadata = [],
-        bool $active = true,
-        int $order = 0,
+    public function leaderboard(): LeaderboardServiceContract
+    {
+        return $this->app->make(LeaderboardServiceContract::class);
+    }
+
+    /**
+     * Start building an analytics query with the fluent API.
+     *
+     * @return AnalyticsServiceContract Fluent builder for chaining
+     *
+     * @example LFL::analytics()->activeUsers()->between($start, $end)->count()
+     */
+    public function analytics(): AnalyticsServiceContract
+    {
+        return $this->app->make(AnalyticsServiceContract::class);
+    }
+
+    // =========================================================================
+    // Setup Helper Methods
+    // =========================================================================
+
+    protected function setupAchievement(
+        ?string $slug,
+        ?string $for,
+        ?string $name,
+        ?string $description,
+        ?string $icon,
+        array $metadata,
+        bool $active,
+        int $order
     ): Achievement {
-        // Generate slug from the "an" (achievement name) parameter
-        $slug = Str::slug($an);
+        if ($slug === null) {
+            throw new InvalidArgumentException('Achievement slug is required');
+        }
 
-        // Use provided name or generate a human-readable one from the slug
-        $displayName = $name ?? Str::headline($an);
-
-        // Normalize the awardable type (support short class names)
+        $slugValue = Str::slug($slug);
+        $displayName = $name ?? Str::headline($slug);
         $awardableType = $this->normalizeAwardableType($for);
 
-        // Upsert the achievement - create or update by slug
         return Achievement::updateOrCreate(
-            ['slug' => $slug],
+            ['slug' => $slugValue],
             [
                 'name' => $displayName,
                 'description' => $description,
@@ -245,13 +401,195 @@ class AwardEngine implements AwardEngineContract
         );
     }
 
+    protected function setupGamedMetric(
+        ?string $slug,
+        ?string $name,
+        ?string $description,
+        ?string $icon,
+        bool $active
+    ): GamedMetric {
+        if ($slug === null) {
+            throw new InvalidArgumentException('GamedMetric slug is required');
+        }
+
+        $slugValue = Str::slug($slug);
+        $displayName = $name ?? Str::headline($slug);
+
+        return GamedMetric::updateOrCreate(
+            ['slug' => $slugValue],
+            [
+                'name' => $displayName,
+                'description' => $description,
+                'icon' => $icon,
+                'active' => $active,
+            ]
+        );
+    }
+
+    protected function setupMetricLevel(
+        ?string $metric,
+        ?int $level,
+        ?int $xp,
+        ?string $name,
+        ?string $description
+    ): MetricLevel {
+        if ($metric === null) {
+            throw new InvalidArgumentException("GamedMetric slug 'metric' is required for metric-level");
+        }
+        if ($level === null) {
+            throw new InvalidArgumentException("Level number 'level' is required for metric-level");
+        }
+        if ($xp === null) {
+            throw new InvalidArgumentException("XP threshold 'xp' is required for metric-level");
+        }
+
+        $gamedMetric = GamedMetric::findBySlug($metric);
+        if (! $gamedMetric) {
+            throw new InvalidArgumentException("GamedMetric '{$metric}' not found");
+        }
+
+        $displayName = $name ?? "Level {$level}";
+
+        return MetricLevel::updateOrCreate(
+            [
+                'gamed_metric_id' => $gamedMetric->id,
+                'level' => $level,
+            ],
+            [
+                'xp_threshold' => $xp,
+                'name' => $displayName,
+                'description' => $description,
+            ]
+        );
+    }
+
+    protected function setupMetricLevelGroup(
+        ?string $slug,
+        ?string $name,
+        ?string $description
+    ): MetricLevelGroup {
+        if ($slug === null) {
+            throw new InvalidArgumentException('MetricLevelGroup slug is required');
+        }
+
+        $slugValue = Str::slug($slug);
+        $displayName = $name ?? Str::headline($slug);
+
+        return MetricLevelGroup::updateOrCreate(
+            ['slug' => $slugValue],
+            [
+                'name' => $displayName,
+                'description' => $description,
+            ]
+        );
+    }
+
+    protected function setupMetricLevelGroupLevel(
+        ?string $group,
+        ?int $level,
+        ?int $xp,
+        ?string $name,
+        ?string $description
+    ): MetricLevelGroupLevel {
+        if ($group === null) {
+            throw new InvalidArgumentException("MetricLevelGroup slug 'group' is required for group-level");
+        }
+        if ($level === null) {
+            throw new InvalidArgumentException("Level number 'level' is required for group-level");
+        }
+        if ($xp === null) {
+            throw new InvalidArgumentException("XP threshold 'xp' is required for group-level");
+        }
+
+        $metricLevelGroup = MetricLevelGroup::findBySlug($group);
+        if (! $metricLevelGroup) {
+            throw new InvalidArgumentException("MetricLevelGroup '{$group}' not found");
+        }
+
+        $displayName = $name ?? "Level {$level}";
+
+        return MetricLevelGroupLevel::updateOrCreate(
+            [
+                'metric_level_group_id' => $metricLevelGroup->id,
+                'level' => $level,
+            ],
+            [
+                'xp_threshold' => $xp,
+                'name' => $displayName,
+                'description' => $description,
+            ]
+        );
+    }
+
+    protected function setupMetricLevelGroupMetric(
+        ?string $group,
+        ?string $metric,
+        ?float $weight
+    ): MetricLevelGroupMetric {
+        if ($group === null) {
+            throw new InvalidArgumentException("MetricLevelGroup slug 'group' is required");
+        }
+        if ($metric === null) {
+            throw new InvalidArgumentException("GamedMetric slug 'metric' is required");
+        }
+
+        $metricLevelGroup = MetricLevelGroup::findBySlug($group);
+        if (! $metricLevelGroup) {
+            throw new InvalidArgumentException("MetricLevelGroup '{$group}' not found");
+        }
+
+        $gamedMetric = GamedMetric::findBySlug($metric);
+        if (! $gamedMetric) {
+            throw new InvalidArgumentException("GamedMetric '{$metric}' not found");
+        }
+
+        return MetricLevelGroupMetric::updateOrCreate(
+            [
+                'metric_level_group_id' => $metricLevelGroup->id,
+                'gamed_metric_id' => $gamedMetric->id,
+            ],
+            [
+                'weight' => $weight ?? 1.0,
+            ]
+        );
+    }
+
+    protected function setupPrize(
+        ?string $slug,
+        ?string $name,
+        ?string $description,
+        ?string $type,
+        int|float|null $cost,
+        ?int $inventory,
+        array $metadata,
+        bool $active,
+        int $order
+    ): Prize {
+        if ($slug === null) {
+            throw new InvalidArgumentException('Prize slug is required');
+        }
+
+        $slugValue = Str::slug($slug);
+        $displayName = $name ?? Str::headline($slug);
+        $prizeType = $type ?? 'virtual';
+
+        return Prize::updateOrCreate(
+            ['slug' => $slugValue],
+            [
+                'name' => $displayName,
+                'description' => $description,
+                'type' => $prizeType,
+                'cost_in_points' => $cost ?? 0,
+                'inventory_quantity' => $inventory,
+                'meta' => ! empty($metadata) ? $metadata : null,
+                'is_active' => $active,
+                'sort_order' => $order,
+            ]
+        );
+    }
+
     /**
      * Normalize an awardable type string to a fully qualified class name or null.
-     *
-     * Handles short class names like 'User' by checking common namespaces.
-     *
-     * @param  string|null  $type  The awardable type to normalize
-     * @return string|null The normalized class name or null
      */
     protected function normalizeAwardableType(?string $type): ?string
     {
@@ -259,12 +597,10 @@ class AwardEngine implements AwardEngineContract
             return null;
         }
 
-        // If it already looks like a fully qualified class name, use it as-is
         if (str_contains($type, '\\')) {
             return $type;
         }
 
-        // Check common Laravel model namespaces
         $commonNamespaces = [
             'App\\Models\\',
             'App\\',
@@ -277,74 +613,18 @@ class AwardEngine implements AwardEngineContract
             }
         }
 
-        // Return as-is (allows storing without validation for flexibility)
         return $type;
     }
 
-    /**
-     * Get or create a gamification profile for an awardable entity.
-     *
-     * @param  mixed  $awardable  The entity to get the profile for
-     * @return mixed The profile instance
-     */
-    public function profile(mixed $awardable): mixed
-    {
-        // TODO: Implement profile logic in Story 7 (Profiles & Opt-In)
-        return null;
-    }
+    // =========================================================================
+    // Configuration Helper Methods
+    // =========================================================================
 
-    /**
-     * Start building a leaderboard query with the fluent API.
-     *
-     * @return LeaderboardServiceContract Fluent builder for chaining
-     *
-     * @example LFL::leaderboard()->for(User::class)->by('points')->period('weekly')->get()
-     * @example LFL::leaderboard()->for(User::class)->by('achievements')->paginate()
-     */
-    public function leaderboard(): LeaderboardServiceContract
-    {
-        return $this->app->make(LeaderboardServiceContract::class);
-    }
-
-    /**
-     * Start building an analytics query with the fluent API.
-     *
-     * Provides access to engagement analytics, aggregate queries, and time-series data
-     * from the event log. Enables developers to extract behavioral insights.
-     *
-     * @return AnalyticsServiceContract Fluent builder for chaining
-     *
-     * @example LFL::analytics()->byType('points')->period('weekly')->total()
-     * @example LFL::analytics()->activeUsers()->between($start, $end)->count()
-     * @example LFL::analytics()->forAchievement('first-login')->achievementCompletionRate()
-     */
-    public function analytics(): AnalyticsServiceContract
-    {
-        return $this->app->make(AnalyticsServiceContract::class);
-    }
-
-    /**
-     * Check if a specific LFL feature is enabled.
-     *
-     * Feature flags allow developers to selectively enable/disable
-     * parts of the package based on their application's needs.
-     *
-     * @param  string  $feature  Feature name (achievements, leaderboards, prizes, profiles, analytics)
-     * @return bool Whether the feature is enabled
-     *
-     * @example LFL::isFeatureEnabled('achievements') // true by default
-     * @example LFL::isFeatureEnabled('profiles') // true by default
-     */
     public function isFeatureEnabled(string $feature): bool
     {
         return (bool) config("lfl.features.{$feature}", false);
     }
 
-    /**
-     * Get all enabled features.
-     *
-     * @return array<string, bool> Array of feature names and their enabled status
-     */
     public function getEnabledFeatures(): array
     {
         $features = config('lfl.features', []);
@@ -352,103 +632,43 @@ class AwardEngine implements AwardEngineContract
         return array_filter($features, fn ($enabled) => $enabled === true);
     }
 
-    /**
-     * Get the configured table prefix.
-     *
-     * @return string The table prefix (default: 'lfl_')
-     */
     public function getTablePrefix(): string
     {
         return config('lfl.table_prefix', 'lfl_');
     }
 
-    /**
-     * Get the default points amount from configuration.
-     *
-     * @return int|float The default points amount
-     */
     public function getDefaultPoints(): int|float
     {
         return config('lfl.defaults.points', 10);
     }
 
-    /**
-     * Get a multiplier value from configuration.
-     *
-     * @param  string  $name  Multiplier name (e.g., 'streak_bonus', 'first_time_bonus')
-     * @return float The multiplier value (default: 1.0)
-     */
     public function getMultiplier(string $name): float
     {
         return (float) config("lfl.defaults.multipliers.{$name}", 1.0);
     }
 
-    /**
-     * Check if event logging is enabled.
-     *
-     * @return bool Whether event logging to database is enabled
-     */
     public function isEventLoggingEnabled(): bool
     {
         return (bool) config('lfl.events.log_to_database', true);
     }
 
-    /**
-     * Check if event dispatching is enabled.
-     *
-     * @return bool Whether event dispatching is enabled
-     */
     public function isEventDispatchEnabled(): bool
     {
         return (bool) config('lfl.events.dispatch', true);
     }
 
-    /**
-     * Get the configured API prefix.
-     *
-     * @return string The API route prefix
-     */
     public function getApiPrefix(): string
     {
         return config('lfl.api.prefix', 'api/lfl');
     }
 
-    /**
-     * Check if the API layer is enabled.
-     *
-     * @return bool Whether the API is enabled
-     */
     public function isApiEnabled(): bool
     {
         return (bool) config('lfl.api.enabled', true);
     }
 
-    /**
-     * Check if the UI layer is enabled.
-     *
-     * @return bool Whether the UI is enabled
-     */
     public function isUiEnabled(): bool
     {
         return (bool) config('lfl.ui.enabled', false);
-    }
-
-    /**
-     * Quick method to award XP to a GamedMetric.
-     *
-     * @param  Model  $recipient  The entity receiving XP
-     * @param  string|GamedMetric  $gamedMetric  GamedMetric slug or model instance
-     * @param  int  $amount  Amount of XP to award
-     * @return ProfileMetric The updated ProfileMetric record
-     *
-     * @example LFL::awardGamedMetric($user, 'combat-xp', 100)
-     * @example LFL::awardGamedMetric($user, $combatMetric, 50)
-     */
-    public function awardGamedMetric(
-        Model $recipient,
-        string|GamedMetric $gamedMetric,
-        int $amount
-    ): ProfileMetric {
-        return $this->gamedMetricService->awardXp($recipient, $gamedMetric, $amount);
     }
 }

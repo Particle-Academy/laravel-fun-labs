@@ -446,7 +446,8 @@ class AdminController extends Controller
     public function metricLevelGroups()
     {
         $groups = MetricLevelGroup::query()
-            ->with(['metrics.gamedMetric', 'levels'])
+            ->with(['metrics.gamedMetric', 'levels', 'profileMetricGroups'])
+            ->withCount('profileMetricGroups')
             ->orderBy('name')
             ->paginate(20);
 

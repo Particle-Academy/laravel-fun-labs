@@ -26,13 +26,14 @@ describe('API Routes', function () {
         // Disable auth middleware for tests (set to null)
         config(['lfl.api.auth.middleware' => null]);
 
-        // Create a default GamedMetric for XP tests
-        GamedMetric::create([
-            'slug' => 'general-xp',
-            'name' => 'General XP',
-            'description' => 'General experience points',
-            'active' => true,
-        ]);
+        // Create a default GamedMetric for XP tests using LFL::setup()
+        LFL::setup(
+            a: 'gamed-metric',
+            slug: 'general-xp',
+            name: 'General XP',
+            description: 'General experience points',
+            active: true
+        );
     });
 
     describe('Profile API', function () {
@@ -296,8 +297,9 @@ describe('API Routes', function () {
             $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
             $user->getProfile();
 
-            LFL::awardGamedMetric($user, 'general-xp', 50);
-            LFL::awardGamedMetric($user, 'general-xp', 30);
+            // Award XP using LFL::award()
+            LFL::award('general-xp')->to($user)->amount(50)->save();
+            LFL::award('general-xp')->to($user)->amount(30)->save();
 
             // Check that profile metrics were created
             $metrics = $user->getProfile()->metrics;

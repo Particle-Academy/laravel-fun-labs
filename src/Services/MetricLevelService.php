@@ -61,17 +61,16 @@ class MetricLevelService
                     if ($achievement->awardable_type === null || $achievement->awardable_type === get_class($awardable)) {
                         // Check if already granted (skip if already has it)
                         if (! $awardable->hasAchievement($achievement)) {
-                            LFL::grantAchievement(
-                                $awardable,
-                                $achievement->slug,
-                                "Reached level {$level->level}: {$level->name}",
-                                'metric-level-progression',
-                                [
+                            LFL::grant($achievement->slug)
+                                ->to($awardable)
+                                ->because("Reached level {$level->level}: {$level->name}")
+                                ->from('metric-level-progression')
+                                ->withMeta([
                                     'metric_level_id' => $level->id,
                                     'gamed_metric_id' => $metric->id,
                                     'level' => $level->level,
-                                ]
-                            );
+                                ])
+                                ->save();
                         }
                     }
                 }
@@ -83,6 +82,47 @@ class MetricLevelService
             'new_level' => $newLevel,
             'levels_unlocked' => $levelsUnlocked,
         ];
+    }
+
+    /**
+     * Check if a profile has reached a specific level in a GamedMetric.
+     *
+     * @param  Profile  $profile  The profile to check
+     * @param  string  $metricSlug  The GamedMetric slug
+     * @param  int  $level  The level to check
+     * @return bool Whether the profile has reached the level
+     */
+    public function hasReachedLevel(Profile $profile, string $metricSlug, int $level): bool
+    {
+        $metric = GamedMetric::findBySlug($metricSlug);
+        if ($metric === null) {
+            return false;
+        }
+
+        $profileMetric = ProfileMetric::where('profile_id', $profile->id)
+            ->where('gamed_metric_id', $metric->id)
+            ->first();
+
+        if ($profileMetric === null) {
+            return false;
+        }
+
+        // Check if current level is >= requested level
+        if ($profileMetric->current_level >= $level) {
+            return true;
+        }
+
+        // Also check if XP meets the level threshold (in case level wasn't updated)
+        $metricLevel = MetricLevel::forMetric($metric->id)
+            ->where('level', $level)
+            ->first();
+
+        if ($metricLevel === null) {
+            // Level not defined, just check current level
+            return $profileMetric->current_level >= $level;
+        }
+
+        return $profileMetric->total_xp >= $metricLevel->xp_threshold;
     }
 
     /**

@@ -153,9 +153,9 @@ class AwardBuilder
         if ($this->recipient === null) {
             $typeValue = $this->getTypeValue();
             $result = AwardResult::failure(
-                type: $typeValue,
                 message: 'No recipient specified for award',
                 errors: ['recipient' => ['A recipient is required to grant an award']],
+                type: $typeValue,
             );
             $this->dispatchFailedEvent($result);
 
@@ -166,10 +166,10 @@ class AwardBuilder
         if (! $this->recipientIsAwardable()) {
             $typeValue = $this->getTypeValue();
             $result = AwardResult::failure(
-                type: $typeValue,
                 message: 'Recipient must use the Awardable trait',
                 errors: ['recipient' => ['Model must implement the Awardable trait']],
                 recipient: $this->recipient,
+                type: $typeValue,
             );
             $this->dispatchFailedEvent($result);
 
@@ -180,10 +180,10 @@ class AwardBuilder
         if ($this->recipientIsOptedOut()) {
             $typeValue = $this->getTypeValue();
             $result = AwardResult::failure(
-                type: $typeValue,
                 message: 'Recipient has opted out of gamification',
                 errors: ['recipient' => ['This recipient has opted out and cannot receive awards']],
                 recipient: $this->recipient,
+                type: $typeValue,
             );
             $this->dispatchFailedEvent($result);
 
@@ -203,10 +203,10 @@ class AwardBuilder
 
         if (! $validation['valid']) {
             $result = AwardResult::failure(
-                type: $typeValue,
                 message: $validation['message'] ?? 'Award validation failed',
                 errors: $validation['errors'] ?? [],
                 recipient: $this->recipient,
+                type: $typeValue,
             );
             $this->dispatchFailedEvent($result);
 
@@ -303,10 +303,10 @@ class AwardBuilder
         $typeValue = $this->getTypeValue();
 
         return AwardResult::failure(
-            type: $typeValue,
             message: "The '{$typeValue}' award type is deprecated. Use GamedMetrics for XP tracking instead. Create a GamedMetric and use LFL::award('your-metric-slug').",
             errors: ['type' => ["Award type '{$typeValue}' is not supported. Use a GamedMetric slug instead."]],
             recipient: $this->recipient,
+            type: $typeValue,
         );
     }
 
@@ -322,31 +322,30 @@ class AwardBuilder
 
         if ($achievement === null) {
             return AwardResult::failure(
-                type: $typeValue,
                 message: 'Achievement not found',
                 errors: ['achievement' => ['The specified achievement does not exist']],
                 recipient: $this->recipient,
+                type: $typeValue,
             );
         }
 
         // Check if achievement is active
         if (! $achievement->is_active) {
             return AwardResult::failure(
-                type: $typeValue,
                 message: 'Achievement is not active',
                 errors: ['achievement' => ['This achievement is currently inactive']],
                 recipient: $this->recipient,
+                type: $typeValue,
             );
         }
 
         // Check if already granted (achievements are typically one-time)
         if ($this->recipient->hasAchievement($achievement)) {
             return AwardResult::failure(
-                type: $typeValue,
                 message: 'Achievement already granted',
                 errors: ['achievement' => ['Recipient already has this achievement']],
                 recipient: $this->recipient,
-                meta: ['achievement_id' => $achievement->id],
+                type: $typeValue,
             );
         }
 
@@ -367,10 +366,10 @@ class AwardBuilder
         $profile->increment('achievement_count');
 
         return AwardResult::success(
-            type: $typeValue,
             award: $grant,
-            recipient: $this->recipient,
             message: "Granted achievement '{$achievement->name}' to recipient",
+            recipient: $this->recipient,
+            type: $typeValue,
             meta: [
                 'achievement_id' => $achievement->id,
                 'achievement_slug' => $achievement->slug,
@@ -395,10 +394,10 @@ class AwardBuilder
 
         if ($prizeId === null && $prizeSlug === null) {
             return AwardResult::failure(
-                type: $typeValue,
                 message: 'Prize not specified. Use withMeta([\'prize_id\' => id]) or withMeta([\'prize_slug\' => slug]).',
                 errors: ['prize' => ['A prize_id or prize_slug must be provided in meta']],
                 recipient: $this->recipient,
+                type: $typeValue,
             );
         }
 
@@ -409,10 +408,10 @@ class AwardBuilder
 
         if ($prize === null) {
             return AwardResult::failure(
-                type: $typeValue,
                 message: 'Prize not found',
                 errors: ['prize' => ['The specified prize does not exist']],
                 recipient: $this->recipient,
+                type: $typeValue,
             );
         }
 
@@ -434,10 +433,10 @@ class AwardBuilder
         $profile->increment('prize_count');
 
         return AwardResult::success(
-            type: $typeValue,
             award: $prizeGrant,
-            recipient: $this->recipient,
             message: "Prize '{$prize->name}' awarded to recipient",
+            recipient: $this->recipient,
+            type: $typeValue,
             meta: [
                 'prize_id' => $prize->id,
                 'prize_slug' => $prize->slug,
@@ -459,10 +458,10 @@ class AwardBuilder
         // Validate GamedMetric is active
         if (! $this->gamedMetric->active) {
             return AwardResult::failure(
-                type: $typeValue,
                 message: "GamedMetric '{$this->gamedMetric->slug}' is not active",
                 errors: ['gamed_metric' => ['This GamedMetric is currently inactive']],
                 recipient: $this->recipient,
+                type: $typeValue,
             );
         }
 
@@ -475,10 +474,10 @@ class AwardBuilder
         );
 
         return AwardResult::success(
-            type: $typeValue,
             award: $profileMetric,
-            recipient: $this->recipient,
             message: "Awarded {$this->amount} XP to '{$this->gamedMetric->name}'",
+            recipient: $this->recipient,
+            type: $typeValue,
             meta: [
                 'gamed_metric_id' => $this->gamedMetric->id,
                 'gamed_metric_slug' => $this->gamedMetric->slug,

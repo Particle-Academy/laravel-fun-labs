@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property \Illuminate\Support\Carbon $updated_at
  * @property-read \Illuminate\Database\Eloquent\Collection<int, MetricLevelGroupMetric> $metrics
  * @property-read \Illuminate\Database\Eloquent\Collection<int, MetricLevelGroupLevel> $levels
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, ProfileMetricGroup> $profileMetricGroups
  */
 class MetricLevelGroup extends Model
 {
@@ -61,6 +62,16 @@ class MetricLevelGroup extends Model
     public function levels(): HasMany
     {
         return $this->hasMany(MetricLevelGroupLevel::class);
+    }
+
+    /**
+     * Get the ProfileMetricGroups tracking progression for this group.
+     *
+     * @return HasMany<ProfileMetricGroup, $this>
+     */
+    public function profileMetricGroups(): HasMany
+    {
+        return $this->hasMany(ProfileMetricGroup::class);
     }
 
     /**

@@ -10,6 +10,7 @@ use LaravelFunLab\Models\MetricLevelGroup;
 use LaravelFunLab\Models\MetricLevelGroupLevel;
 use LaravelFunLab\Models\Profile;
 use LaravelFunLab\Models\ProfileMetric;
+use LaravelFunLab\Models\ProfileMetricGroup;
 
 /**
  * MetricLevelGroupService
@@ -18,6 +19,47 @@ use LaravelFunLab\Models\ProfileMetric;
  */
 class MetricLevelGroupService
 {
+    /**
+     * Check if a profile has reached a specific level in a MetricLevelGroup.
+     *
+     * @param  Profile  $profile  The profile to check
+     * @param  string  $groupSlug  The MetricLevelGroup slug
+     * @param  int  $level  The level to check
+     * @return bool Whether the profile has reached the level
+     */
+    public function hasReachedLevel(Profile $profile, string $groupSlug, int $level): bool
+    {
+        $groupModel = MetricLevelGroup::findBySlug($groupSlug);
+        if ($groupModel === null) {
+            return false;
+        }
+
+        // Calculate total XP from all metrics in the group
+        $totalXp = 0;
+        foreach ($groupModel->metrics as $groupMetric) {
+            $profileMetric = ProfileMetric::where('profile_id', $profile->id)
+                ->where('gamed_metric_id', $groupMetric->gamed_metric_id)
+                ->first();
+
+            if ($profileMetric !== null) {
+                $weightedXp = (int) ($profileMetric->total_xp * $groupMetric->weight);
+                $totalXp += $weightedXp;
+            }
+        }
+
+        // Check if XP meets the level threshold
+        $groupLevel = MetricLevelGroupLevel::forGroup($groupModel->id)
+            ->where('level', $level)
+            ->first();
+
+        if ($groupLevel === null) {
+            // Level not defined, return false
+            return false;
+        }
+
+        return $totalXp >= $groupLevel->xp_threshold;
+    }
+
     /**
      * Calculate total combined XP for a MetricLevelGroup for an awardable entity.
      *
@@ -65,7 +107,7 @@ class MetricLevelGroupService
     }
 
     /**
-     * Get current level for a MetricLevelGroup based on combined XP.
+     * Get current level for a MetricLevelGroup based on stored ProfileMetricGroup.
      *
      * @param  Model  $awardable  The awardable entity
      * @param  string|MetricLevelGroup  $group  Group slug or model instance
@@ -83,21 +125,36 @@ class MetricLevelGroupService
             return 1;
         }
 
-        $totalXp = $this->getTotalXp($awardable, $groupModel);
+        $profile = Profile::where('awardable_type', get_class($awardable))
+            ->where('awardable_id', $awardable->getKey())
+            ->first();
 
-        // Find the highest level reached
-        $levels = $groupModel->levels()->ordered()->get();
-        $currentLevel = 1;
-
-        foreach ($levels as $level) {
-            if ($level->isReached($totalXp)) {
-                $currentLevel = $level->level;
-            } else {
-                break;
-            }
+        if ($profile === null) {
+            return 1;
         }
 
-        return $currentLevel;
+        $profileMetricGroup = ProfileMetricGroup::where('profile_id', $profile->id)
+            ->where('metric_level_group_id', $groupModel->id)
+            ->first();
+
+        if ($profileMetricGroup === null) {
+            // Fallback to calculation if no stored record exists
+            $totalXp = $this->getTotalXp($awardable, $groupModel);
+            $levels = $groupModel->levels()->ordered()->get();
+            $currentLevel = 1;
+
+            foreach ($levels as $level) {
+                if ($level->isReached($totalXp)) {
+                    $currentLevel = $level->level;
+                } else {
+                    break;
+                }
+            }
+
+            return $currentLevel;
+        }
+
+        return $profileMetricGroup->current_level;
     }
 
     /**
@@ -121,7 +178,7 @@ class MetricLevelGroupService
 
         $currentLevel = $this->getCurrentLevel($awardable, $groupModel);
 
-        $nextLevel = MetricLevelGroupLevel::where('metric_level_group_id', $groupModel->id)
+        $nextLevel = MetricLevelGroupLevel::forGroup($groupModel->id)
             ->where('level', '>', $currentLevel)
             ->ordered()
             ->first();
@@ -152,7 +209,7 @@ class MetricLevelGroupService
         $currentLevel = $this->getCurrentLevel($awardable, $groupModel);
 
         // Get current level threshold
-        $currentLevelThreshold = MetricLevelGroupLevel::where('metric_level_group_id', $groupModel->id)
+        $currentLevelThreshold = MetricLevelGroupLevel::forGroup($groupModel->id)
             ->where('level', $currentLevel)
             ->first()?->xp_threshold ?? 0;
 
@@ -212,61 +269,58 @@ class MetricLevelGroupService
     }
 
     /**
-     * Check and award achievements for group level progression.
-     * Call this method after XP is awarded to any metric in a group.
+     * Check and update level progression for a ProfileMetricGroup.
      *
-     * @param  Model  $awardable  The awardable entity
-     * @param  string|MetricLevelGroup  $group  Group slug or model instance
-     * @return array<string, mixed> Array with 'levels_unlocked' and 'achievements_awarded'
+     * @param  ProfileMetricGroup  $profileMetricGroup  The ProfileMetricGroup to check
+     * @return array<string, mixed> Array with 'level_reached' (bool), 'new_level' (int|null), 'levels_unlocked' (array)
      */
-    public function checkProgression(
-        Model $awardable,
-        string|MetricLevelGroup $group
-    ): array {
-        $groupModel = $group instanceof MetricLevelGroup
-            ? $group
-            : MetricLevelGroup::findBySlug($group);
+    public function checkProgression(ProfileMetricGroup $profileMetricGroup): array
+    {
+        $group = $profileMetricGroup->metricLevelGroup;
+        $profile = $profileMetricGroup->profile;
+        $totalXp = $this->getTotalXp($profile->awardable, $group);
+        $currentLevel = $profileMetricGroup->current_level;
 
-        if ($groupModel === null) {
-            return [
-                'levels_unlocked' => [],
-                'achievements_awarded' => [],
-            ];
+        // Get all levels for this group, ordered by level
+        $levels = MetricLevelGroupLevel::forGroup($group->id)
+            ->ordered()
+            ->get();
+
+        $newLevel = null;
+        $levelsUnlocked = [];
+
+        // Find the highest level reached
+        foreach ($levels as $level) {
+            if ($level->isReached($totalXp) && $level->level > $currentLevel) {
+                $newLevel = $level->level;
+                $levelsUnlocked[] = $level;
+            }
         }
 
-        $totalXp = $this->getTotalXp($awardable, $groupModel);
-        $levels = $groupModel->levels()->ordered()->get();
-        $levelsUnlocked = [];
-        $achievementsAwarded = [];
+        // Update current level if a new level was reached
+        if ($newLevel !== null) {
+            $profileMetricGroup->setLevel($newLevel);
 
-        // Find all levels reached
-        foreach ($levels as $level) {
-            if ($level->isReached($totalXp)) {
-                $levelsUnlocked[] = $level;
-
-                // Auto-award achievements attached to this level
+            // Auto-award achievements attached to unlocked levels
+            foreach ($levelsUnlocked as $level) {
                 $achievements = $level->achievements()->active()->get();
+                $awardable = $profile->awardable;
 
                 foreach ($achievements as $achievement) {
                     // Only award if the achievement is for this awardable type or universal
                     if ($achievement->awardable_type === null || $achievement->awardable_type === get_class($awardable)) {
                         // Check if already granted (skip if already has it)
                         if (! $awardable->hasAchievement($achievement)) {
-                            $result = LFL::grantAchievement(
-                                $awardable,
-                                $achievement->slug,
-                                "Reached level {$level->level}: {$level->name}",
-                                'metric-level-group-progression',
-                                [
+                            LFL::grant($achievement->slug)
+                                ->to($awardable)
+                                ->because("Reached level {$level->level}: {$level->name}")
+                                ->from('metric-level-group-progression')
+                                ->withMeta([
                                     'metric_level_group_level_id' => $level->id,
-                                    'metric_level_group_id' => $groupModel->id,
+                                    'metric_level_group_id' => $group->id,
                                     'level' => $level->level,
-                                ]
-                            );
-
-                            if ($result->succeeded()) {
-                                $achievementsAwarded[] = $achievement;
-                            }
+                                ])
+                                ->save();
                         }
                     }
                 }
@@ -274,8 +328,29 @@ class MetricLevelGroupService
         }
 
         return [
+            'level_reached' => $newLevel !== null,
+            'new_level' => $newLevel,
             'levels_unlocked' => $levelsUnlocked,
-            'achievements_awarded' => $achievementsAwarded,
         ];
+    }
+
+    /**
+     * Get or create a ProfileMetricGroup for a profile and group.
+     *
+     * @param  Profile  $profile  The profile
+     * @param  MetricLevelGroup  $group  The metric level group
+     * @return ProfileMetricGroup The ProfileMetricGroup instance
+     */
+    public function getOrCreateProfileMetricGroup(Profile $profile, MetricLevelGroup $group): ProfileMetricGroup
+    {
+        return ProfileMetricGroup::firstOrCreate(
+            [
+                'profile_id' => $profile->id,
+                'metric_level_group_id' => $group->id,
+            ],
+            [
+                'current_level' => 1,
+            ]
+        );
     }
 }

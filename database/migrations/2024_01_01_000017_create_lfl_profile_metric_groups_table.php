@@ -7,7 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Creates the profile_metrics table for tracking accumulated XP per profile per metric.
+ * Creates the profile_metric_groups table for tracking level progression per profile per metric group.
  * Table name uses configurable prefix from lfl.table_prefix config.
  */
 return new class extends Migration
@@ -17,7 +17,7 @@ return new class extends Migration
      */
     protected function tableName(): string
     {
-        return config('lfl.table_prefix', 'lfl_').'profile_metrics';
+        return config('lfl.table_prefix', 'lfl_').'profile_metric_groups';
     }
 
     /**
@@ -33,20 +33,18 @@ return new class extends Migration
                 config('lfl.table_prefix', 'lfl_').'profiles'
             )->cascadeOnDelete();
 
-            // Foreign key to GamedMetric
-            $table->foreignId('gamed_metric_id')->constrained(
-                config('lfl.table_prefix', 'lfl_').'gamed_metrics'
+            // Foreign key to MetricLevelGroup
+            $table->foreignId('metric_level_group_id')->constrained(
+                config('lfl.table_prefix', 'lfl_').'metric_level_groups'
             )->cascadeOnDelete();
 
-            // XP tracking
-            $table->unsignedBigInteger('total_xp')->default(0);
+            // Level tracking
             $table->unsignedInteger('current_level')->default(1);
 
             $table->timestamps();
 
             // Indexes
-            $table->unique(['profile_id', 'gamed_metric_id'], 'unique_profile_metric');
-            $table->index('total_xp');
+            $table->unique(['profile_id', 'metric_level_group_id'], 'unique_profile_metric_group');
             $table->index('current_level');
         });
     }
