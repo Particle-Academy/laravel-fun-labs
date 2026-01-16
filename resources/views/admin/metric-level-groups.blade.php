@@ -43,6 +43,7 @@
                 <th>Description</th>
                 <th>Metrics</th>
                 <th>Levels</th>
+                <th>Profiles</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -78,12 +79,17 @@
                         @endif
                     </td>
                     <td>
+                        <span style="color: #666; font-size: 14px;">
+                            {{ $group->profile_metric_groups_count ?? 0 }} profile{{ ($group->profile_metric_groups_count ?? 0) !== 1 ? 's' : '' }} tracking
+                        </span>
+                    </td>
+                    <td>
                         <a href="{{ route('lfl.admin.metric-level-groups') }}#group-{{ $group->id }}" style="color: #007bff; text-decoration: none;">View</a>
                     </td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="6" style="text-align: center; padding: 40px; color: #999;">
+                    <td colspan="7" style="text-align: center; padding: 40px; color: #999;">
                         No MetricLevelGroups found
                     </td>
                 </tr>
