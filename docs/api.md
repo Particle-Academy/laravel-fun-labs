@@ -95,17 +95,17 @@ LFL::awardBadge($user, 'early adopter', 'admin');
 
 ### GamedMetric Methods
 
-#### `awardGamedMetric(Model $recipient, string|GamedMetric $gamedMetric, int $amount): UserGamedMetric`
+#### `awardGamedMetric(Model $recipient, string|GamedMetric $gamedMetric, int $amount): ProfileMetric`
 
-Award XP to a specific GamedMetric (XP bucket). Automatically checks level progression and grants achievements attached to reached levels.
+Award XP to a specific GamedMetric (XP bucket). Automatically checks level progression for the metric and grants achievements attached to reached levels. Also automatically checks progression for any MetricLevelGroups that contain this metric.
 
 ```php
 // Award combat XP by slug
-$userMetric = LFL::awardGamedMetric($user, 'combat-xp', 100);
+$profileMetric = LFL::awardGamedMetric($user, 'combat-xp', 100);
 
 // Award using GamedMetric model
 $combatMetric = GamedMetric::findBySlug('combat-xp');
-$userMetric = LFL::awardGamedMetric($user, $combatMetric, 50);
+$profileMetric = LFL::awardGamedMetric($user, $combatMetric, 50);
 ```
 
 **Parameters:**
@@ -113,7 +113,13 @@ $userMetric = LFL::awardGamedMetric($user, $combatMetric, 50);
 - `$gamedMetric` - GamedMetric slug string or model instance
 - `$amount` - XP amount to award
 
-**Returns:** `UserGamedMetric` - The updated user metric record
+**Returns:** `ProfileMetric` - The updated profile metric record
+
+**Note:** This method automatically:
+1. Updates the ProfileMetric with new XP total
+2. Checks individual metric level progression
+3. Checks group progression for all MetricLevelGroups containing this metric
+4. Grants achievements attached to reached levels (both metric and group levels)
 
 ### Achievement Setup
 
@@ -808,23 +814,48 @@ Represents a level threshold for a MetricLevelGroup based on combined weighted X
 **Relationships:**
 - `achievements()` - BelongsToMany Achievement (achievements auto-granted when group level is reached)
 
-### UserGamedMetric
+### ProfileMetricGroup
 
-Tracks a user's accumulated XP and current level for a specific GamedMetric.
+Tracks level progression for a MetricLevelGroup per Profile. Stores the current level persistently to avoid recalculating on every query.
 
 **Properties:**
-- `id` - ID
-- `awardable_type` - User model type
-- `awardable_id` - User model ID
-- `gamed_metric_id` - GamedMetric ID
-- `total_xp` - Total accumulated XP
-- `current_level` - Current level number
+- `id` - ProfileMetricGroup ID
+- `profile_id` - Profile ID
+- `metric_level_group_id` - MetricLevelGroup ID
+- `current_level` - Current level number (stored, not calculated)
 - `created_at` - Creation timestamp
 - `updated_at` - Last update timestamp
 
+**Relationships:**
+- `profile()` - BelongsTo Profile
+- `metricLevelGroup()` - BelongsTo MetricLevelGroup
+
 **Methods:**
-- `addXp(int $amount): void` - Add XP to total
-- `setLevel(int $level): void` - Update current level
+- `setLevel(int $level): void` - Update the current level
+
+**Note:** ProfileMetricGroup records are automatically created and updated when XP is awarded to metrics that belong to a group. Group progression is checked automatically after each XP award.
+
+### ProfileMetric
+
+Tracks accumulated XP and current level for a specific GamedMetric per Profile.
+
+**Properties:**
+- `id` - ProfileMetric ID
+- `profile_id` - Profile ID
+- `gamed_metric_id` - GamedMetric ID
+- `total_xp` - Total accumulated XP for this metric
+- `current_level` - Current level number (stored, not calculated)
+- `created_at` - Creation timestamp
+- `updated_at` - Last update timestamp
+
+**Relationships:**
+- `profile()` - BelongsTo Profile
+- `gamedMetric()` - BelongsTo GamedMetric
+
+**Methods:**
+- `setLevel(int $level): void` - Update the current level
+
+**Note:** ProfileMetric records are automatically created when XP is awarded to a GamedMetric. Level progression is checked and updated automatically after each XP award.
 
 ## Services
 
@@ -865,18 +896,24 @@ $progress = $levelService->getProgressPercentage($user, 'combat-xp');
 // Returns: 65.5
 ```
 
-#### `checkProgression(UserGamedMetric $userMetric): array`
+#### `checkProgression(ProfileMetric $profileMetric): array`
 
-Check and update level progression after XP is awarded. Returns information about levels unlocked.
+Check and update level progression after XP is awarded. Returns information about levels unlocked. This method is called automatically when XP is awarded, but can also be called manually.
 
 ```php
-$result = $levelService->checkProgression($userMetric);
+$profileMetric = ProfileMetric::where('profile_id', $profile->id)
+    ->where('gamed_metric_id', $metric->id)
+    ->first();
+
+$result = $levelService->checkProgression($profileMetric);
 // Returns: [
 //     'level_reached' => true,
 //     'new_level' => 4,
 //     'levels_unlocked' => [MetricLevel, MetricLevel]
 // ]
 ```
+
+**Note:** Level progression is automatically checked when XP is awarded via `LFL::award()` or `LFL::awardGamedMetric()`. You typically don't need to call this method manually.
 
 ### MetricLevelGroupService
 
@@ -938,17 +975,30 @@ $info = $groupService->getLevelInfo($user, 'total-player-level');
 // ]
 ```
 
-#### `checkProgression(Model $awardable, string|MetricLevelGroup $group): array`
+#### `getOrCreateProfileMetricGroup(Profile $profile, MetricLevelGroup $group): ProfileMetricGroup`
 
-Check group level progression and auto-award achievements.
+Get or create a ProfileMetricGroup for a profile and group combination.
 
 ```php
-$result = $groupService->checkProgression($user, 'total-player-level');
+$profileMetricGroup = $groupService->getOrCreateProfileMetricGroup($profile, $group);
+// Returns: ProfileMetricGroup with current_level = 1 (if new)
+```
+
+#### `checkProgression(ProfileMetricGroup $profileMetricGroup): array`
+
+Check and update group level progression. This method is called automatically when XP is awarded to metrics in a group, but can also be called manually.
+
+```php
+$profileMetricGroup = $groupService->getOrCreateProfileMetricGroup($profile, $group);
+$result = $groupService->checkProgression($profileMetricGroup);
 // Returns: [
-//     'levels_unlocked' => [MetricLevelGroupLevel, ...],
-//     'achievements_awarded' => [Achievement, ...]
+//     'level_reached' => true,
+//     'new_level' => 5,
+//     'levels_unlocked' => [MetricLevelGroupLevel, ...]
 // ]
 ```
+
+**Note:** Group progression is automatically checked when XP is awarded to any GamedMetric that belongs to a MetricLevelGroup. You typically don't need to call this method manually unless you're doing bulk XP updates or need to re-check progression after manual data changes.
 
 ## Events
 

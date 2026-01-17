@@ -7,6 +7,7 @@ This guide provides practical examples and patterns for using Laravel Fun Lab in
 - [Setting Up Models](#setting-up-models)
 - [Profiles](#profiles)
 - [GamedMetrics (XP System)](#gamedmetrics-xp-system)
+- [MetricLevelGroups (Composite Leveling)](#metriclevelgroups-composite-leveling)
 - [Achievements](#achievements)
 - [Prizes](#prizes)
 - [Leaderboards](#leaderboards)
@@ -217,6 +218,170 @@ MetricLevel::create([
 ```
 
 Level progression happens automatically when XP is awarded.
+
+## MetricLevelGroups (Composite Leveling)
+
+MetricLevelGroups allow you to combine multiple GamedMetrics with weights to create composite leveling systems. For example, a "Total Player Level" that combines Combat XP, Magic XP, and Crafting XP.
+
+### Creating MetricLevelGroups
+
+```php
+use LaravelFunLab\Facades\LFL;
+use LaravelFunLab\Models\MetricLevelGroup;
+
+// Create a group
+$group = MetricLevelGroup::create([
+    'slug' => 'total-player-level',
+    'name' => 'Total Player Level',
+    'description' => 'Combined level from all activities',
+]);
+
+// Add metrics to the group with weights
+LFL::setup(
+    a: 'metric-level-group-metric',
+    with: [
+        'group' => 'total-player-level',
+        'metric' => 'combat-xp',
+        'weight' => 1.0, // Full weight
+    ]
+);
+
+LFL::setup(
+    a: 'metric-level-group-metric',
+    with: [
+        'group' => 'total-player-level',
+        'metric' => 'magic-xp',
+        'weight' => 0.8, // 80% weight
+    ]
+);
+
+LFL::setup(
+    a: 'metric-level-group-metric',
+    with: [
+        'group' => 'total-player-level',
+        'metric' => 'crafting-xp',
+        'weight' => 0.5, // 50% weight
+    ]
+);
+```
+
+### Creating Group Levels
+
+```php
+// Create level thresholds for the group
+LFL::setup(
+    a: 'metric-level-group-level',
+    with: [
+        'group' => 'total-player-level',
+        'level' => 1,
+        'xp' => 0,
+        'name' => 'Novice',
+    ]
+);
+
+LFL::setup(
+    a: 'metric-level-group-level',
+    with: [
+        'group' => 'total-player-level',
+        'level' => 2,
+        'xp' => 500,
+        'name' => 'Apprentice',
+    ]
+);
+
+LFL::setup(
+    a: 'metric-level-group-level',
+    with: [
+        'group' => 'total-player-level',
+        'level' => 3,
+        'xp' => 1500,
+        'name' => 'Journeyman',
+    ]
+);
+```
+
+### Automatic Group Progression
+
+**Group progression is checked automatically** when XP is awarded to any metric in the group. You don't need to manually trigger progression checks.
+
+```php
+// Award XP to combat - group progression is automatically checked
+LFL::award('combat-xp')->to($user)->amount(100)->save();
+
+// Award XP to magic - group progression is automatically checked again
+LFL::award('magic-xp')->to($user)->amount(50)->save();
+
+// The ProfileMetricGroup is automatically created and updated
+// with the current level based on combined weighted XP
+```
+
+### Querying Group Levels
+
+```php
+use LaravelFunLab\Services\MetricLevelGroupService;
+
+$groupService = app(MetricLevelGroupService::class);
+
+// Get current level in a group
+$level = $groupService->getCurrentLevel($user, 'total-player-level');
+// Returns: 3
+
+// Get total combined XP (weighted)
+$totalXp = $groupService->getTotalXp($user, 'total-player-level');
+// Returns: 1200 (combat: 500*1.0 + magic: 400*0.8 + crafting: 200*0.5)
+
+// Get progress percentage to next level
+$progress = $groupService->getProgressPercentage($user, 'total-player-level');
+// Returns: 70.0 (70% to next level)
+
+// Get comprehensive level info
+$info = $groupService->getLevelInfo($user, 'total-player-level');
+// Returns: [
+//     'current_level' => 3,
+//     'total_xp' => 1200,
+//     'next_level_threshold' => 1500,
+//     'progress_percentage' => 70.0
+// ]
+```
+
+### Accessing ProfileMetricGroup
+
+The ProfileMetricGroup model stores the current level persistently:
+
+```php
+use LaravelFunLab\Models\ProfileMetricGroup;
+
+$profile = $user->getProfile();
+$group = MetricLevelGroup::findBySlug('total-player-level');
+
+$profileMetricGroup = ProfileMetricGroup::where('profile_id', $profile->id)
+    ->where('metric_level_group_id', $group->id)
+    ->first();
+
+if ($profileMetricGroup) {
+    echo $profileMetricGroup->current_level; // Stored level
+}
+```
+
+### Auto-Awarding Achievements on Group Level-Up
+
+You can attach achievements to group levels that are automatically granted when the level is reached:
+
+```php
+use LaravelFunLab\Models\MetricLevelGroupLevel;
+use LaravelFunLab\Models\Achievement;
+
+$level = MetricLevelGroupLevel::where('metric_level_group_id', $group->id)
+    ->where('level', 5)
+    ->first();
+
+$achievement = Achievement::where('slug', 'level-5-master')->first();
+
+// Attach achievement to level
+$level->achievements()->attach($achievement->id);
+
+// When user reaches level 5 in the group, the achievement is automatically granted
+```
 
 ## Achievements
 
