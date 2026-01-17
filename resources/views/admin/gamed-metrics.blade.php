@@ -46,17 +46,21 @@
         <thead>
             <tr>
                 <th>Name</th>
-                <th>Slug</th>
                 <th>Description</th>
                 <th>Icon</th>
                 <th>Status</th>
+                <th>Actions</th>
             </tr>
         </thead>
         <tbody>
             @forelse($metrics as $metric)
                 <tr>
-                    <td><strong>{{ $metric->name }}</strong></td>
-                    <td><code>{{ $metric->slug }}</code></td>
+                    <td>
+                        <strong>{{ $metric->name }}</strong>
+                        <div style="color: #666; font-size: 12px; margin-top: 4px;">
+                            <code>{{ $metric->slug }}</code>
+                        </div>
+                    </td>
                     <td>{{ $metric->description ?? '-' }}</td>
                     <td>{{ $metric->icon ?? '-' }}</td>
                     <td>
@@ -65,6 +69,9 @@
                         @else
                             <span class="badge badge-warning">Inactive</span>
                         @endif
+                    </td>
+                    <td>
+                        <a href="{{ route('lfl.admin.gamed-metrics.edit', $metric) }}" style="color: #007bff; text-decoration: none; font-weight: bold;">Edit</a>
                     </td>
                 </tr>
             @empty

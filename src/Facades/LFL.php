@@ -19,7 +19,7 @@ use LaravelFunLab\Services\GrantBuilder;
  *
  * Core Methods:
  *
- * @method static Model setup(?string $a = null, ?string $an = null, ?string $slug = null, ?string $name = null, ?string $description = null, ?string $icon = null, ?string $for = null, ?string $metric = null, ?string $group = null, ?int $level = null, ?int $xp = null, ?float $weight = null, ?string $type = null, int|float|null $cost = null, ?int $inventory = null, array $metadata = [], bool $active = true, int $order = 0) Set up any entity (GamedMetric, MetricLevel, MetricLevelGroup, Achievement, Prize)
+ * @method static Model setup(string $a, array $with = []) Set up any entity (GamedMetric, MetricLevel, MetricLevelGroup, Achievement, Prize)
  * @method static AwardXpBuilder award(string $metricSlug) Award XP to a GamedMetric (returns fluent builder)
  * @method static GrantBuilder grant(string $slug) Grant an Achievement or Prize (returns fluent builder)
  * @method static bool hasLevel(Model $awardable, int $level, ?string $metric = null, ?string $group = null) Check if Profile has reached a level in a metric or group

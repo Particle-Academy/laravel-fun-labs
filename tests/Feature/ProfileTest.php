@@ -286,10 +286,12 @@ describe('Opt-In/Opt-Out Logic', function () {
         // Create a GamedMetric for XP tests using LFL::setup()
         LFL::setup(
             a: 'gamed-metric',
-            slug: 'general-xp',
-            name: 'General XP',
-            description: 'General experience points',
-            active: true
+            with: [
+                'slug' => 'general-xp',
+                'name' => 'General XP',
+                'description' => 'General experience points',
+                'active' => true,
+            ]
         );
     });
 
@@ -320,7 +322,7 @@ describe('Opt-In/Opt-Out Logic', function () {
 
     it('blocks achievements when opted out', function () {
         // Create achievement using LFL::setup()
-        LFL::setup(an: 'test-achievement', name: 'Test Achievement');
+        LFL::setup(a: 'achievement', with: ['slug' => 'test-achievement', 'name' => 'Test Achievement']);
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
 
@@ -337,9 +339,11 @@ describe('Opt-In/Opt-Out Logic', function () {
         // Create a prize using LFL::setup()
         LFL::setup(
             a: 'prize',
-            slug: 'test-prize',
-            name: 'Test Prize',
-            type: 'virtual'
+            with: [
+                'slug' => 'test-prize',
+                'name' => 'Test Prize',
+                'type' => 'virtual',
+            ]
         );
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
@@ -360,9 +364,11 @@ describe('Opt-In/Opt-Out Logic', function () {
         // Create a prize using LFL::setup()
         LFL::setup(
             a: 'prize',
-            slug: 'test-prize',
-            name: 'Test Prize',
-            type: 'virtual'
+            with: [
+                'slug' => 'test-prize',
+                'name' => 'Test Prize',
+                'type' => 'virtual',
+            ]
         );
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
@@ -394,10 +400,12 @@ describe('Profile Aggregations', function () {
         // Create a GamedMetric for XP tests using LFL::setup()
         LFL::setup(
             a: 'gamed-metric',
-            slug: 'general-xp',
-            name: 'General XP',
-            description: 'General experience points',
-            active: true
+            with: [
+                'slug' => 'general-xp',
+                'name' => 'General XP',
+                'description' => 'General experience points',
+                'active' => true,
+            ]
         );
     });
 
@@ -417,8 +425,8 @@ describe('Profile Aggregations', function () {
 
     it('can calculate achievement count', function () {
         // Create achievements using LFL::setup()
-        LFL::setup(an: 'achievement-1', name: 'Achievement 1');
-        LFL::setup(an: 'achievement-2', name: 'Achievement 2');
+        LFL::setup(a: 'achievement', with: ['slug' => 'achievement-1', 'name' => 'Achievement 1']);
+        LFL::setup(a: 'achievement', with: ['slug' => 'achievement-2', 'name' => 'Achievement 2']);
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $profile = $user->getProfile();
@@ -434,8 +442,8 @@ describe('Profile Aggregations', function () {
 
     it('can calculate prize count', function () {
         // Create prizes using LFL::setup()
-        LFL::setup(a: 'prize', slug: 'prize-1', name: 'Prize 1', type: 'virtual');
-        LFL::setup(a: 'prize', slug: 'prize-2', name: 'Prize 2', type: 'virtual');
+        LFL::setup(a: 'prize', with: ['slug' => 'prize-1', 'name' => 'Prize 1', 'type' => 'virtual']);
+        LFL::setup(a: 'prize', with: ['slug' => 'prize-2', 'name' => 'Prize 2', 'type' => 'virtual']);
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $profile = $user->getProfile();
@@ -451,10 +459,10 @@ describe('Profile Aggregations', function () {
 
     it('can recalculate all aggregations', function () {
         // Create achievement using LFL::setup()
-        LFL::setup(an: 'test-achievement', name: 'Test Achievement');
+        LFL::setup(a: 'achievement', with: ['slug' => 'test-achievement', 'name' => 'Test Achievement']);
 
         // Create prize using LFL::setup()
-        LFL::setup(a: 'prize', slug: 'test-prize', name: 'Test Prize', type: 'virtual');
+        LFL::setup(a: 'prize', with: ['slug' => 'test-prize', 'name' => 'Test Prize', 'type' => 'virtual']);
 
         $user = User::create(['name' => 'Test User', 'email' => 'test@example.com']);
         $profile = $user->getProfile();

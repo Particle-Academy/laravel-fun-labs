@@ -23,10 +23,12 @@ describe('LeaderboardBuilder', function () {
         // Create a default GamedMetric for XP tests using LFL::setup()
         LFL::setup(
             a: 'gamed-metric',
-            slug: 'general-xp',
-            name: 'General XP',
-            description: 'General experience points',
-            active: true
+            with: [
+                'slug' => 'general-xp',
+                'name' => 'General XP',
+                'description' => 'General experience points',
+                'active' => true,
+            ]
         );
     });
 

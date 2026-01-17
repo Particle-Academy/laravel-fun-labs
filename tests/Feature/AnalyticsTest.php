@@ -45,10 +45,12 @@ describe('Analytics Filtering', function () {
         // Create a GamedMetric for XP using LFL::setup()
         LFL::setup(
             a: 'gamed-metric',
-            slug: 'general-xp',
-            name: 'General XP',
-            description: 'General experience points',
-            active: true
+            with: [
+                'slug' => 'general-xp',
+                'name' => 'General XP',
+                'description' => 'General experience points',
+                'active' => true,
+            ]
         );
 
         // Create some XP awards using LFL::award()
@@ -95,10 +97,12 @@ describe('Analytics Aggregations', function () {
         // Create a GamedMetric for XP using LFL::setup()
         LFL::setup(
             a: 'gamed-metric',
-            slug: 'general-xp',
-            name: 'General XP',
-            description: 'General experience points',
-            active: true
+            with: [
+                'slug' => 'general-xp',
+                'name' => 'General XP',
+                'description' => 'General experience points',
+                'active' => true,
+            ]
         );
 
         // Award XP using LFL::award()
@@ -145,10 +149,12 @@ describe('Active Users Analytics', function () {
         // Create a GamedMetric for XP using LFL::setup()
         LFL::setup(
             a: 'gamed-metric',
-            slug: 'general-xp',
-            name: 'General XP',
-            description: 'General experience points',
-            active: true
+            with: [
+                'slug' => 'general-xp',
+                'name' => 'General XP',
+                'description' => 'General experience points',
+                'active' => true,
+            ]
         );
     });
 
@@ -192,10 +198,12 @@ describe('Achievement Completion Rate', function () {
         // Create a GamedMetric for XP using LFL::setup()
         LFL::setup(
             a: 'gamed-metric',
-            slug: 'general-xp',
-            name: 'General XP',
-            description: 'General experience points',
-            active: true
+            with: [
+                'slug' => 'general-xp',
+                'name' => 'General XP',
+                'description' => 'General experience points',
+                'active' => true,
+            ]
         );
     });
 
@@ -208,7 +216,7 @@ describe('Achievement Completion Rate', function () {
         $user2->getProfile();
 
         // Create achievement using LFL::setup()
-        LFL::setup(an: 'first-login', name: 'First Login');
+        LFL::setup(a: 'achievement', with: ['slug' => 'first-login', 'name' => 'First Login']);
 
         // Grant to one user using LFL::grant()
         LFL::grant('first-login')->to($user1)->save();
@@ -235,10 +243,12 @@ describe('Export Functionality', function () {
         // Create a GamedMetric for XP using LFL::setup()
         LFL::setup(
             a: 'gamed-metric',
-            slug: 'general-xp',
-            name: 'General XP',
-            description: 'General experience points',
-            active: true
+            with: [
+                'slug' => 'general-xp',
+                'name' => 'General XP',
+                'description' => 'General experience points',
+                'active' => true,
+            ]
         );
     });
 

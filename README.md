@@ -58,9 +58,9 @@ GamedMetrics are independent XP buckets. Each metric tracks its own XP and level
 use LaravelFunLab\Facades\LFL;
 
 // Create XP categories
-LFL::setup(a: 'gamed-metric', slug: 'combat-xp', name: 'Combat XP');
-LFL::setup(a: 'gamed-metric', slug: 'crafting-xp', name: 'Crafting XP');
-LFL::setup(a: 'gamed-metric', slug: 'social-xp', name: 'Social XP');
+LFL::setup(a: 'gamed-metric', with: ['slug' => 'combat-xp', 'name' => 'Combat XP']);
+LFL::setup(a: 'gamed-metric', with: ['slug' => 'crafting-xp', 'name' => 'Crafting XP']);
+LFL::setup(a: 'gamed-metric', with: ['slug' => 'social-xp', 'name' => 'Social XP']);
 ```
 
 ### 3. Define Levels for Metrics
@@ -69,10 +69,10 @@ Levels are XP thresholds that can auto-unlock achievements:
 
 ```php
 // Define levels for combat-xp
-LFL::setup(a: 'metric-level', metric: 'combat-xp', level: 1, xp: 0, name: 'Novice');
-LFL::setup(a: 'metric-level', metric: 'combat-xp', level: 2, xp: 100, name: 'Apprentice');
-LFL::setup(a: 'metric-level', metric: 'combat-xp', level: 3, xp: 500, name: 'Warrior');
-LFL::setup(a: 'metric-level', metric: 'combat-xp', level: 4, xp: 1000, name: 'Champion');
+LFL::setup(a: 'metric-level', with: ['metric' => 'combat-xp', 'level' => 1, 'xp' => 0, 'name' => 'Novice']);
+LFL::setup(a: 'metric-level', with: ['metric' => 'combat-xp', 'level' => 2, 'xp' => 100, 'name' => 'Apprentice']);
+LFL::setup(a: 'metric-level', with: ['metric' => 'combat-xp', 'level' => 3, 'xp' => 500, 'name' => 'Warrior']);
+LFL::setup(a: 'metric-level', with: ['metric' => 'combat-xp', 'level' => 4, 'xp' => 1000, 'name' => 'Champion']);
 ```
 
 ### 4. Award XP
@@ -95,8 +95,8 @@ echo $profile->total_xp; // Total XP across all metrics
 ### 5. Create and Grant Achievements
 
 ```php
-// Create an achievement (shorthand with 'an' parameter)
-LFL::setup(an: 'first-login', name: 'First Login', description: 'Welcome!', icon: 'star');
+// Create an achievement
+LFL::setup(a: 'achievement', with: ['slug' => 'first-login', 'name' => 'First Login', 'description' => 'Welcome!', 'icon' => 'star']);
 
 // Grant the achievement
 LFL::grant('first-login')
@@ -116,10 +116,12 @@ if ($user->hasAchievement('first-login')) {
 // Create a prize
 LFL::setup(
     a: 'prize',
-    slug: 'premium-access',
-    name: '1 Month Premium Access',
-    type: 'virtual',
-    inventory: 100 // Limited quantity
+    with: [
+        'slug' => 'premium-access',
+        'name' => '1 Month Premium Access',
+        'type' => 'virtual',
+        'inventory' => 100, // Limited quantity
+    ]
 );
 
 // Grant the prize
@@ -149,15 +151,15 @@ Combine multiple metrics with weights for composite leveling:
 
 ```php
 // Create a group
-LFL::setup(a: 'metric-level-group', slug: 'overall-power', name: 'Overall Power');
+LFL::setup(a: 'metric-level-group', with: ['slug' => 'overall-power', 'name' => 'Overall Power']);
 
 // Add metrics to the group with weights
-LFL::setup(a: 'group-metric', group: 'overall-power', metric: 'combat-xp', weight: 1.0);
-LFL::setup(a: 'group-metric', group: 'overall-power', metric: 'crafting-xp', weight: 0.5);
+LFL::setup(a: 'metric-level-group-metric', with: ['group' => 'overall-power', 'metric' => 'combat-xp', 'weight' => 1.0]);
+LFL::setup(a: 'metric-level-group-metric', with: ['group' => 'overall-power', 'metric' => 'crafting-xp', 'weight' => 0.5]);
 
 // Define levels for the group
-LFL::setup(a: 'group-level', group: 'overall-power', level: 1, xp: 0, name: 'Beginner');
-LFL::setup(a: 'group-level', group: 'overall-power', level: 10, xp: 5000, name: 'Expert');
+LFL::setup(a: 'metric-level-group-level', with: ['group' => 'overall-power', 'level' => 1, 'xp' => 0, 'name' => 'Beginner']);
+LFL::setup(a: 'metric-level-group-level', with: ['group' => 'overall-power', 'level' => 10, 'xp' => 5000, 'name' => 'Expert']);
 ```
 
 ### 9. Leaderboards

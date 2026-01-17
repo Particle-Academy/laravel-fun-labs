@@ -58,6 +58,10 @@ Route::prefix(config('lfl.ui.prefix', 'lfl'))
                 ->name('gamed-metrics');
             Route::post('/gamed-metrics', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'storeGamedMetric'])
                 ->name('gamed-metrics.store');
+            Route::get('/gamed-metrics/{gamedMetric}/edit', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'editGamedMetric'])
+                ->name('gamed-metrics.edit');
+            Route::put('/gamed-metrics/{gamedMetric}', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'updateGamedMetric'])
+                ->name('gamed-metrics.update');
 
             // MetricLevels management
             Route::get('/metric-levels', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'metricLevels'])
@@ -74,6 +78,22 @@ Route::prefix(config('lfl.ui.prefix', 'lfl'))
                 ->name('metric-level-groups');
             Route::post('/metric-level-groups', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'storeMetricLevelGroup'])
                 ->name('metric-level-groups.store');
+            Route::get('/metric-level-groups/{metricLevelGroup}', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'showMetricLevelGroup'])
+                ->name('metric-level-groups.show');
+            Route::get('/metric-level-groups/{metricLevelGroup}/edit', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'editMetricLevelGroup'])
+                ->name('metric-level-groups.edit');
+            Route::put('/metric-level-groups/{metricLevelGroup}', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'updateMetricLevelGroup'])
+                ->name('metric-level-groups.update');
+            Route::post('/metric-level-groups/{metricLevelGroup}/metrics', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'storeMetricLevelGroupMetric'])
+                ->name('metric-level-group-metrics.store');
+            Route::put('/metric-level-group-metrics/{metricLevelGroupMetric}', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'updateMetricLevelGroupMetric'])
+                ->name('metric-level-group-metrics.update');
+            Route::delete('/metric-level-group-metrics/{metricLevelGroupMetric}', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'deleteMetricLevelGroupMetric'])
+                ->name('metric-level-group-metrics.delete');
+            Route::get('/metric-level-groups/{metricLevelGroup}/levels/create', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'createMetricLevelGroupLevel'])
+                ->name('metric-level-group-levels.create');
+            Route::post('/metric-level-groups/{metricLevelGroup}/levels', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'storeMetricLevelGroupLevel'])
+                ->name('metric-level-group-levels.store');
             Route::get('/metric-level-group-levels/{metricLevelGroupLevel}/edit', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'editMetricLevelGroupLevel'])
                 ->name('metric-level-group-levels.edit');
             Route::put('/metric-level-group-levels/{metricLevelGroupLevel}', [\LaravelFunLab\Http\Controllers\Web\AdminController::class, 'updateMetricLevelGroupLevel'])

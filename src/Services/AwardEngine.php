@@ -22,6 +22,7 @@ use LaravelFunLab\Models\MetricLevelGroupMetric;
 use LaravelFunLab\Models\Prize;
 use LaravelFunLab\Models\PrizeGrant;
 use LaravelFunLab\Models\Profile;
+use LaravelFunLab\Validation\SetupValidator;
 use LaravelFunLab\ValueObjects\AwardResult;
 
 /**
@@ -56,70 +57,76 @@ class AwardEngine implements AwardEngineContract
      * Creates GamedMetrics, MetricLevels, MetricLevelGroups, Achievements, or Prizes.
      * Uses upsert logic to create new entities or update existing ones by slug.
      *
-     * @param  string|null  $a  Entity type: 'gamed-metric', 'metric-level', 'metric-level-group', 'metric-level-group-level', 'achievement', 'prize'
-     * @param  string|null  $an  Achievement name/slug (shorthand for a:'achievement')
-     * @param  string|null  $slug  Entity slug identifier
-     * @param  string|null  $name  Human-readable display name
-     * @param  string|null  $description  Entity description
-     * @param  string|null  $icon  Icon identifier for UI display
-     * @param  string|null  $for  Awardable type restriction (achievements only)
-     * @param  string|null  $metric  GamedMetric slug (for metric-level)
-     * @param  string|null  $group  MetricLevelGroup slug (for metric-level-group-level or adding metric to group)
-     * @param  int|null  $level  Level number (for metric-level or metric-level-group-level)
-     * @param  int|null  $xp  XP threshold (for metric-level or metric-level-group-level)
-     * @param  float|null  $weight  Weight in group (for adding metric to group)
-     * @param  string|null  $type  Prize type: 'virtual', 'physical', 'coupon', 'badge', 'other'
-     * @param  int|float|null  $cost  Cost in points (for prizes)
-     * @param  int|null  $inventory  Inventory quantity (null = unlimited, for prizes)
-     * @param  array<string, mixed>  $metadata  Flexible JSON metadata
-     * @param  bool  $active  Whether the entity is active (default: true)
-     * @param  int  $order  Sort order for display (default: 0)
+     * @param  string  $a  Entity type: 'gamed-metric', 'metric-level', 'metric-level-group', 'metric-level-group-level', 'achievement', 'prize'
+     * @param  array<string, mixed>  $with  Configuration array with entity-specific fields
      * @return Model The created or updated entity instance
      *
-     * @example LFL::setup(an: 'first-login', description: 'Logged in for the first time')
-     * @example LFL::setup(a: 'gamed-metric', slug: 'combat-xp', name: 'Combat XP')
-     * @example LFL::setup(a: 'metric-level', metric: 'combat-xp', level: 1, xp: 100, name: 'Novice Fighter')
-     * @example LFL::setup(a: 'prize', slug: 'premium-access', name: '1 Month Premium', type: 'virtual')
+     * @example LFL::setup(a: 'achievement', with: ['slug' => 'first-login', 'description' => 'Logged in for the first time'])
+     * @example LFL::setup(a: 'gamed-metric', with: ['slug' => 'combat-xp', 'name' => 'Combat XP'])
+     * @example LFL::setup(a: 'metric-level', with: ['metric' => 'combat-xp', 'level' => 1, 'xp' => 100, 'name' => 'Novice Fighter'])
+     * @example LFL::setup(a: 'prize', with: ['slug' => 'premium-access', 'name' => '1 Month Premium', 'type' => 'virtual'])
      */
-    public function setup(
-        ?string $a = null,
-        ?string $an = null,
-        ?string $slug = null,
-        ?string $name = null,
-        ?string $description = null,
-        ?string $icon = null,
-        ?string $for = null,
-        ?string $metric = null,
-        ?string $group = null,
-        ?int $level = null,
-        ?int $xp = null,
-        ?float $weight = null,
-        ?string $type = null,
-        int|float|null $cost = null,
-        ?int $inventory = null,
-        array $metadata = [],
-        bool $active = true,
-        int $order = 0,
-    ): Model {
-        // Shorthand: if 'an' is provided, it's an achievement
-        if ($an !== null) {
-            return $this->setupAchievement($an, $for, $name, $description, $icon, $metadata, $active, $order);
-        }
+    public function setup(string $a, array $with = []): Model
+    {
+        // Validate the entity type and 'with' array
+        $validated = SetupValidator::validate($a, $with);
 
-        // Require entity type
-        if ($a === null) {
-            throw new InvalidArgumentException("Entity type 'a' or achievement name 'an' is required for setup()");
-        }
+        // Normalize entity type (handle aliases)
+        $normalizedType = SetupValidator::normalizeType($a);
 
-        return match ($a) {
-            'gamed-metric', 'metric' => $this->setupGamedMetric($slug, $name, $description, $icon, $active),
-            'metric-level', 'level' => $this->setupMetricLevel($metric, $level, $xp, $name, $description),
-            'metric-level-group', 'group' => $this->setupMetricLevelGroup($slug, $name, $description),
-            'metric-level-group-level', 'group-level' => $this->setupMetricLevelGroupLevel($group, $level, $xp, $name, $description),
-            'metric-level-group-metric', 'group-metric' => $this->setupMetricLevelGroupMetric($group, $metric, $weight),
-            'achievement' => $this->setupAchievement($slug, $for, $name, $description, $icon, $metadata, $active, $order),
-            'prize' => $this->setupPrize($slug, $name, $description, $type, $cost, $inventory, $metadata, $active, $order),
-            default => throw new InvalidArgumentException("Unknown entity type: {$a}"),
+        return match ($normalizedType) {
+            'gamed-metric' => $this->setupGamedMetric(
+                $validated['slug'] ?? null,
+                $validated['name'] ?? null,
+                $validated['description'] ?? null,
+                $validated['icon'] ?? null,
+                $validated['active'] ?? true
+            ),
+            'metric-level' => $this->setupMetricLevel(
+                $validated['metric'] ?? null,
+                $validated['level'] ?? null,
+                $validated['xp'] ?? null,
+                $validated['name'] ?? null,
+                $validated['description'] ?? null
+            ),
+            'metric-level-group' => $this->setupMetricLevelGroup(
+                $validated['slug'] ?? null,
+                $validated['name'] ?? null,
+                $validated['description'] ?? null
+            ),
+            'metric-level-group-level' => $this->setupMetricLevelGroupLevel(
+                $validated['group'] ?? null,
+                $validated['level'] ?? null,
+                $validated['xp'] ?? null,
+                $validated['name'] ?? null,
+                $validated['description'] ?? null
+            ),
+            'metric-level-group-metric' => $this->setupMetricLevelGroupMetric(
+                $validated['group'] ?? null,
+                $validated['metric'] ?? null,
+                $validated['weight'] ?? null
+            ),
+            'achievement' => $this->setupAchievement(
+                $validated['slug'] ?? null,
+                $validated['for'] ?? null,
+                $validated['name'] ?? null,
+                $validated['description'] ?? null,
+                $validated['icon'] ?? null,
+                $validated['metadata'] ?? [],
+                $validated['active'] ?? true,
+                $validated['order'] ?? 0
+            ),
+            'prize' => $this->setupPrize(
+                $validated['slug'] ?? null,
+                $validated['name'] ?? null,
+                $validated['description'] ?? null,
+                $validated['type'] ?? null,
+                $validated['cost'] ?? null,
+                $validated['inventory'] ?? null,
+                $validated['metadata'] ?? [],
+                $validated['active'] ?? true,
+                $validated['order'] ?? 0
+            ),
         };
     }
 

@@ -115,7 +115,7 @@ describe('Award Validation Pipeline', function () {
         AwardValidationPipeline::flush();
 
         // Create an achievement for testing using LFL::setup()
-        LFL::setup(an: 'test-achievement', name: 'Test Achievement');
+        LFL::setup(a: 'achievement', with: ['slug' => 'test-achievement', 'name' => 'Test Achievement']);
     });
 
     it('passes validation when no steps are registered', function () {
@@ -287,18 +287,22 @@ describe('GamedMetric XP System', function () {
         // Create GamedMetrics using LFL::setup()
         LFL::setup(
             a: 'gamed-metric',
-            slug: 'combat-xp',
-            name: 'Combat XP',
-            description: 'Experience from combat',
-            active: true
+            with: [
+                'slug' => 'combat-xp',
+                'name' => 'Combat XP',
+                'description' => 'Experience from combat',
+                'active' => true,
+            ]
         );
 
         LFL::setup(
             a: 'gamed-metric',
-            slug: 'crafting-xp',
-            name: 'Crafting XP',
-            description: 'Experience from crafting',
-            active: true
+            with: [
+                'slug' => 'crafting-xp',
+                'name' => 'Crafting XP',
+                'description' => 'Experience from crafting',
+                'active' => true,
+            ]
         );
     });
 

@@ -28,10 +28,12 @@ describe('XP Awarded Events', function () {
         // Create a GamedMetric for XP tests using LFL::setup()
         LFL::setup(
             a: 'gamed-metric',
-            slug: 'general-xp',
-            name: 'General XP',
-            description: 'General experience points',
-            active: true
+            with: [
+                'slug' => 'general-xp',
+                'name' => 'General XP',
+                'description' => 'General experience points',
+                'active' => true,
+            ]
         );
     });
 
@@ -63,9 +65,12 @@ describe('AchievementUnlocked Event', function () {
     beforeEach(function () {
         // Create achievement using LFL::setup()
         LFL::setup(
-            an: 'first-login',
-            name: 'First Login',
-            description: 'Logged in for the first time'
+            a: 'achievement',
+            with: [
+                'slug' => 'first-login',
+                'name' => 'First Login',
+                'description' => 'Logged in for the first time',
+            ]
         );
     });
 
@@ -143,9 +148,11 @@ describe('PrizeAwarded Event', function () {
         // Create prize using LFL::setup()
         LFL::setup(
             a: 'prize',
-            slug: 'test-prize',
-            name: 'Test Prize',
-            type: 'virtual'
+            with: [
+                'slug' => 'test-prize',
+                'name' => 'Test Prize',
+                'type' => 'virtual',
+            ]
         );
     });
 
@@ -197,7 +204,7 @@ describe('Generic AwardGranted Event', function () {
 
     beforeEach(function () {
         // Create achievement using LFL::setup()
-        LFL::setup(an: 'test-achievement', name: 'Test Achievement');
+        LFL::setup(a: 'achievement', with: ['slug' => 'test-achievement', 'name' => 'Test Achievement']);
     });
 
     it('dispatches both generic and specific events for achievements', function () {
@@ -233,21 +240,25 @@ describe('EventLog Model', function () {
         // Create a GamedMetric for XP tests using LFL::setup()
         LFL::setup(
             a: 'gamed-metric',
-            slug: 'general-xp',
-            name: 'General XP',
-            description: 'General experience points',
-            active: true
+            with: [
+                'slug' => 'general-xp',
+                'name' => 'General XP',
+                'description' => 'General experience points',
+                'active' => true,
+            ]
         );
 
         // Create achievement using LFL::setup()
-        LFL::setup(an: 'test-achievement', name: 'Test Achievement');
+        LFL::setup(a: 'achievement', with: ['slug' => 'test-achievement', 'name' => 'Test Achievement']);
 
         // Create prize using LFL::setup()
         LFL::setup(
             a: 'prize',
-            slug: 'test-prize',
-            name: 'Test Prize',
-            type: 'virtual'
+            with: [
+                'slug' => 'test-prize',
+                'name' => 'Test Prize',
+                'type' => 'virtual',
+            ]
         );
     });
 
@@ -325,7 +336,7 @@ describe('EventLog Model', function () {
         LFL::grant('test-achievement')->to($user1)->save();
 
         // Create another achievement using LFL::setup()
-        LFL::setup(an: 'another-achievement', name: 'Another Achievement');
+        LFL::setup(a: 'achievement', with: ['slug' => 'another-achievement', 'name' => 'Another Achievement']);
         LFL::grant('another-achievement')->to($user2)->save();
 
         $user1Logs = EventLog::where('awardable_id', $user1->id)->count();

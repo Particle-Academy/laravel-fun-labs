@@ -346,6 +346,41 @@ class AdminController extends Controller
     }
 
     /**
+     * Show the form for editing a GamedMetric.
+     *
+     * @return \Illuminate\View\View
+     */
+    public function editGamedMetric(GamedMetric $gamedMetric)
+    {
+        return view('lfl::admin.gamed-metrics.edit', [
+            'metric' => $gamedMetric,
+        ]);
+    }
+
+    /**
+     * Update a GamedMetric.
+     *
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function updateGamedMetric(Request $request, GamedMetric $gamedMetric)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'slug' => 'required|string|max:255|unique:'.config('lfl.table_prefix', 'lfl_').'gamed_metrics,slug,'.$gamedMetric->id,
+            'description' => 'nullable|string',
+            'icon' => 'nullable|string|max:255',
+            'active' => 'boolean',
+        ]);
+
+        $validated['active'] = $request->has('active');
+
+        $gamedMetric->update($validated);
+
+        return redirect()->route('lfl.admin.gamed-metrics')
+            ->with('success', 'GamedMetric updated successfully.');
+    }
+
+    /**
      * Display MetricLevels management page.
      *
      * @return \Illuminate\View\View
@@ -446,14 +481,69 @@ class AdminController extends Controller
     public function metricLevelGroups()
     {
         $groups = MetricLevelGroup::query()
-            ->with(['metrics.gamedMetric', 'levels', 'profileMetricGroups'])
-            ->withCount('profileMetricGroups')
+            ->withCount(['metrics', 'levels', 'profileMetricGroups'])
             ->orderBy('name')
             ->paginate(20);
 
         return view('lfl::admin.metric-level-groups', [
             'groups' => $groups,
         ]);
+    }
+
+    /**
+     * Show a single MetricLevelGroup with all details.
+     *
+     * @return \Illuminate\View\View
+     */
+    public function showMetricLevelGroup(MetricLevelGroup $metricLevelGroup)
+    {
+        $group = $metricLevelGroup->load(['metrics.gamedMetric', 'levels.achievements']);
+
+        // Get all active metrics that are NOT already in the group
+        $existingMetricIds = $group->metrics->pluck('gamed_metric_id')->toArray();
+        $availableMetrics = \LaravelFunLab\Models\GamedMetric::active()
+            ->whereNotIn('id', $existingMetricIds)
+            ->orderBy('name')
+            ->get();
+
+        $achievements = Achievement::active()->orderBy('name')->get();
+
+        return view('lfl::admin.metric-level-groups.show', [
+            'group' => $group,
+            'availableMetrics' => $availableMetrics,
+            'achievements' => $achievements,
+        ]);
+    }
+
+    /**
+     * Show the form for editing a MetricLevelGroup.
+     *
+     * @return \Illuminate\View\View
+     */
+    public function editMetricLevelGroup(MetricLevelGroup $metricLevelGroup)
+    {
+        return view('lfl::admin.metric-level-groups.edit', [
+            'group' => $metricLevelGroup,
+        ]);
+    }
+
+    /**
+     * Update a MetricLevelGroup.
+     *
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function updateMetricLevelGroup(Request $request, MetricLevelGroup $metricLevelGroup)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'slug' => 'required|string|max:255|unique:'.config('lfl.table_prefix', 'lfl_').'metric_level_groups,slug,'.$metricLevelGroup->id,
+            'description' => 'nullable|string',
+        ]);
+
+        $metricLevelGroup->update($validated);
+
+        return redirect()->route('lfl.admin.metric-level-groups.show', $metricLevelGroup)
+            ->with('success', 'MetricLevelGroup updated successfully.');
     }
 
     /**
@@ -492,7 +582,7 @@ class AdminController extends Controller
         // Sync achievements
         $metricLevelGroupLevel->achievements()->sync($request->achievement_ids ?? []);
 
-        return redirect()->route('lfl.admin.metric-level-groups')
+        return redirect()->route('lfl.admin.metric-level-groups.show', $metricLevelGroupLevel->metricLevelGroup)
             ->with('success', 'MetricLevelGroupLevel updated successfully.');
     }
 
@@ -511,9 +601,116 @@ class AdminController extends Controller
 
         $validated['slug'] = $validated['slug'] ?? Str::slug($validated['name']);
 
-        MetricLevelGroup::create($validated);
+        $group = MetricLevelGroup::create($validated);
 
-        return redirect()->route('lfl.admin.metric-level-groups')
+        return redirect()->route('lfl.admin.metric-level-groups.show', $group)
             ->with('success', 'MetricLevelGroup created successfully.');
+    }
+
+    /**
+     * Show the form for creating a new MetricLevelGroupLevel.
+     *
+     * @return \Illuminate\View\View
+     */
+    public function createMetricLevelGroupLevel(MetricLevelGroup $metricLevelGroup)
+    {
+        $achievements = Achievement::active()->orderBy('name')->get();
+
+        return view('lfl::admin.metric-level-group-levels.create', [
+            'group' => $metricLevelGroup,
+            'achievements' => $achievements,
+        ]);
+    }
+
+    /**
+     * Store a new MetricLevelGroupLevel.
+     *
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function storeMetricLevelGroupLevel(Request $request, MetricLevelGroup $metricLevelGroup)
+    {
+        $validated = $request->validate([
+            'level' => 'required|integer|min:1',
+            'xp_threshold' => 'required|integer|min:0',
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'achievement_ids' => 'nullable|array',
+            'achievement_ids.*' => 'exists:'.config('lfl.table_prefix', 'lfl_').'achievements,id',
+        ]);
+
+        $validated['metric_level_group_id'] = $metricLevelGroup->id;
+
+        $level = \LaravelFunLab\Models\MetricLevelGroupLevel::create($validated);
+
+        // Sync achievements
+        $level->achievements()->sync($request->achievement_ids ?? []);
+
+        return redirect()->route('lfl.admin.metric-level-groups.show', $metricLevelGroup)
+            ->with('success', 'MetricLevelGroupLevel created successfully.');
+    }
+
+    /**
+     * Store a new MetricLevelGroupMetric (add metric to group).
+     *
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function storeMetricLevelGroupMetric(Request $request, MetricLevelGroup $metricLevelGroup)
+    {
+        $validated = $request->validate([
+            'gamed_metric_id' => 'required|exists:'.config('lfl.table_prefix', 'lfl_').'gamed_metrics,id',
+            'weight' => 'required|numeric|min:0.01|max:100',
+        ]);
+
+        // Check if metric is already in group
+        $existing = \LaravelFunLab\Models\MetricLevelGroupMetric::where('metric_level_group_id', $metricLevelGroup->id)
+            ->where('gamed_metric_id', $validated['gamed_metric_id'])
+            ->first();
+
+        if ($existing) {
+            return redirect()->route('lfl.admin.metric-level-groups.show', $metricLevelGroup)
+                ->with('error', 'This metric is already in the group.');
+        }
+
+        \LaravelFunLab\Models\MetricLevelGroupMetric::create([
+            'metric_level_group_id' => $metricLevelGroup->id,
+            'gamed_metric_id' => $validated['gamed_metric_id'],
+            'weight' => $validated['weight'],
+        ]);
+
+        return redirect()->route('lfl.admin.metric-level-groups.show', $metricLevelGroup)
+            ->with('success', 'Metric added to group successfully.');
+    }
+
+    /**
+     * Update a MetricLevelGroupMetric (update weight).
+     *
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function updateMetricLevelGroupMetric(Request $request, \LaravelFunLab\Models\MetricLevelGroupMetric $metricLevelGroupMetric)
+    {
+        $validated = $request->validate([
+            'weight' => 'required|numeric|min:0.01|max:100',
+        ]);
+
+        $metricLevelGroupMetric->update($validated);
+
+        return redirect()->route('lfl.admin.metric-level-groups.show', $metricLevelGroupMetric->metricLevelGroup)
+            ->with('success', 'Metric weight updated successfully.');
+    }
+
+    /**
+     * Delete a MetricLevelGroupMetric (remove metric from group).
+     *
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function deleteMetricLevelGroupMetric(\LaravelFunLab\Models\MetricLevelGroupMetric $metricLevelGroupMetric)
+    {
+        $group = $metricLevelGroupMetric->metricLevelGroup;
+        $metricName = $metricLevelGroupMetric->gamedMetric->name;
+
+        $metricLevelGroupMetric->delete();
+
+        return redirect()->route('lfl.admin.metric-level-groups.show', $group)
+            ->with('success', "Metric '{$metricName}' removed from group successfully.");
     }
 }

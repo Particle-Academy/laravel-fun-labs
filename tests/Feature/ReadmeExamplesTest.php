@@ -26,10 +26,12 @@ describe('README Quick Start Examples', function () {
         // Create a default GamedMetric for XP tests using LFL::setup()
         LFL::setup(
             a: 'gamed-metric',
-            slug: 'general-xp',
-            name: 'General XP',
-            description: 'General experience points',
-            active: true
+            with: [
+                'slug' => 'general-xp',
+                'name' => 'General XP',
+                'description' => 'General experience points',
+                'active' => true,
+            ]
         );
     });
 
@@ -56,11 +58,14 @@ describe('README Quick Start Examples', function () {
     it('example 3: can setup and grant achievements', function () {
         // Define an achievement using LFL::setup()
         $achievement = LFL::setup(
-            an: 'first-login',
-            for: 'User',
-            name: 'First Login',
-            description: 'Welcome! You\'ve logged in for the first time.',
-            icon: 'star'
+            a: 'achievement',
+            with: [
+                'slug' => 'first-login',
+                'for' => 'User',
+                'name' => 'First Login',
+                'description' => 'Welcome! You\'ve logged in for the first time.',
+                'icon' => 'star',
+            ]
         );
 
         expect($achievement)->toBeInstanceOf(Achievement::class)
@@ -106,7 +111,7 @@ describe('README Quick Start Examples', function () {
         $user2 = User::create(['name' => 'User 2', 'email' => 'user2@example.com']);
 
         // Setup achievement using LFL::setup()
-        LFL::setup(an: 'first-login', for: 'User');
+        LFL::setup(a: 'achievement', with: ['slug' => 'first-login', 'for' => 'User']);
 
         // Grant to one user using LFL::grant()
         LFL::grant('first-login')->to($this->user)->because('login')->from('auth')->save();

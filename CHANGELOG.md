@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0] - 2025-01-XX
+## [0.3.1] - 2025-01-17
+
+### Fixed
+
+- **Test for Automatic Group Progression**
+  - Fixed test that incorrectly expected manual progression check after XP awards
+  - Test now correctly verifies that group progression is triggered automatically when XP is awarded
+
+## [0.3.0] - 2025-01-16
 
 ### Fixed
 
@@ -50,8 +58,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **MetricLevelGroup Model**
   - Added `profileMetricGroups()` relationship
-
-## [Unreleased]
 
 ### Added
 

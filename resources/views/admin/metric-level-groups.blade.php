@@ -39,7 +39,6 @@
         <thead>
             <tr>
                 <th>Name</th>
-                <th>Slug</th>
                 <th>Description</th>
                 <th>Metrics</th>
                 <th>Levels</th>
@@ -50,33 +49,22 @@
         <tbody>
             @forelse($groups as $group)
                 <tr>
-                    <td><strong>{{ $group->name }}</strong></td>
-                    <td><code>{{ $group->slug }}</code></td>
+                    <td>
+                        <strong>{{ $group->name }}</strong>
+                        <div style="color: #666; font-size: 12px; margin-top: 4px;">
+                            <code>{{ $group->slug }}</code>
+                        </div>
+                    </td>
                     <td>{{ $group->description ?? '-' }}</td>
                     <td>
-                        @foreach($group->metrics as $metric)
-                            <span class="badge">{{ $metric->gamedMetric->name }} ({{ $metric->weight }}x)</span>
-                        @endforeach
+                        <span style="color: #666; font-size: 14px;">
+                            {{ $group->metrics_count ?? 0 }} metric{{ ($group->metrics_count ?? 0) !== 1 ? 's' : '' }}
+                        </span>
                     </td>
                     <td>
-                        @if($group->levels->isNotEmpty())
-                            <div style="font-size: 12px;">
-                                @foreach($group->levels as $level)
-                                    <div>
-                                        <a href="{{ route('lfl.admin.metric-level-group-levels.edit', $level) }}" style="color: #007bff; text-decoration: none;">
-                                            Level {{ $level->level }}: {{ $level->name }}
-                                        </a>
-                                        @if($level->achievements->isNotEmpty())
-                                            <span style="color: #666; margin-left: 5px;">
-                                                ({{ $level->achievements->count() }} achievement{{ $level->achievements->count() !== 1 ? 's' : '' }})
-                                            </span>
-                                        @endif
-                                    </div>
-                                @endforeach
-                            </div>
-                        @else
-                            <span style="color: #999;">No levels</span>
-                        @endif
+                        <span style="color: #666; font-size: 14px;">
+                            {{ $group->levels_count ?? 0 }} level{{ ($group->levels_count ?? 0) !== 1 ? 's' : '' }}
+                        </span>
                     </td>
                     <td>
                         <span style="color: #666; font-size: 14px;">
@@ -84,7 +72,7 @@
                         </span>
                     </td>
                     <td>
-                        <a href="{{ route('lfl.admin.metric-level-groups') }}#group-{{ $group->id }}" style="color: #007bff; text-decoration: none;">View</a>
+                        <a href="{{ route('lfl.admin.metric-level-groups.show', $group) }}" style="color: #007bff; text-decoration: none; font-weight: bold;">View Details</a>
                     </td>
                 </tr>
             @empty

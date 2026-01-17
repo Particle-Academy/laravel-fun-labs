@@ -5,9 +5,7 @@ declare(strict_types=1);
 use LaravelFunLab\Facades\LFL;
 use LaravelFunLab\Models\GamedMetric;
 use LaravelFunLab\Models\MetricLevelGroup;
-use LaravelFunLab\Models\MetricLevelGroupLevel;
 use LaravelFunLab\Models\Profile;
-use LaravelFunLab\Models\ProfileMetric;
 use LaravelFunLab\Models\ProfileMetricGroup;
 use LaravelFunLab\Services\MetricLevelGroupService;
 use LaravelFunLab\Tests\Fixtures\User;
@@ -132,13 +130,13 @@ describe('MetricLevelGroupService with ProfileMetricGroup', function () {
         ]);
 
         // Add metrics to group
-        LFL::setup(a: 'group-metric', group: 'test-service-group', metric: 'test-metric-1', weight: 1.0);
-        LFL::setup(a: 'group-metric', group: 'test-service-group', metric: 'test-metric-2', weight: 1.0);
+        LFL::setup(a: 'metric-level-group-metric', with: ['group' => 'test-service-group', 'metric' => 'test-metric-1', 'weight' => 1.0]);
+        LFL::setup(a: 'metric-level-group-metric', with: ['group' => 'test-service-group', 'metric' => 'test-metric-2', 'weight' => 1.0]);
 
         // Create levels
-        LFL::setup(a: 'group-level', group: 'test-service-group', level: 1, xp: 0, name: 'Level 1');
-        LFL::setup(a: 'group-level', group: 'test-service-group', level: 2, xp: 100, name: 'Level 2');
-        LFL::setup(a: 'group-level', group: 'test-service-group', level: 3, xp: 300, name: 'Level 3');
+        LFL::setup(a: 'metric-level-group-level', with: ['group' => 'test-service-group', 'level' => 1, 'xp' => 0, 'name' => 'Level 1']);
+        LFL::setup(a: 'metric-level-group-level', with: ['group' => 'test-service-group', 'level' => 2, 'xp' => 100, 'name' => 'Level 2']);
+        LFL::setup(a: 'metric-level-group-level', with: ['group' => 'test-service-group', 'level' => 3, 'xp' => 300, 'name' => 'Level 3']);
 
         $service = app(MetricLevelGroupService::class);
         $profileMetricGroup = $service->getOrCreateProfileMetricGroup($profile, $group);
@@ -148,6 +146,8 @@ describe('MetricLevelGroupService with ProfileMetricGroup', function () {
     });
 
     it('updates stored current_level when progression occurs', function () {
+        // This test verifies that awarding XP automatically triggers group progression
+        // The GamedMetricService::awardXp calls checkGroupProgression after each award
         $user = User::create(['name' => 'Test User', 'email' => 'stored-progression@example.com']);
         $profile = $user->getProfile();
 
@@ -171,27 +171,31 @@ describe('MetricLevelGroupService with ProfileMetricGroup', function () {
         ]);
 
         // Add metrics to group
-        LFL::setup(a: 'group-metric', group: 'test-progression-group', metric: 'test-metric-prog-1', weight: 1.0);
-        LFL::setup(a: 'group-metric', group: 'test-progression-group', metric: 'test-metric-prog-2', weight: 1.0);
+        LFL::setup(a: 'metric-level-group-metric', with: ['group' => 'test-progression-group', 'metric' => 'test-metric-prog-1', 'weight' => 1.0]);
+        LFL::setup(a: 'metric-level-group-metric', with: ['group' => 'test-progression-group', 'metric' => 'test-metric-prog-2', 'weight' => 1.0]);
 
         // Create levels
-        LFL::setup(a: 'group-level', group: 'test-progression-group', level: 1, xp: 0, name: 'Level 1');
-        LFL::setup(a: 'group-level', group: 'test-progression-group', level: 2, xp: 100, name: 'Level 2');
-        LFL::setup(a: 'group-level', group: 'test-progression-group', level: 3, xp: 300, name: 'Level 3');
+        LFL::setup(a: 'metric-level-group-level', with: ['group' => 'test-progression-group', 'level' => 1, 'xp' => 0, 'name' => 'Level 1']);
+        LFL::setup(a: 'metric-level-group-level', with: ['group' => 'test-progression-group', 'level' => 2, 'xp' => 100, 'name' => 'Level 2']);
+        LFL::setup(a: 'metric-level-group-level', with: ['group' => 'test-progression-group', 'level' => 3, 'xp' => 300, 'name' => 'Level 3']);
 
-        // Award XP to reach level 2
+        // Award XP to reach level 2 - this automatically triggers group progression
         LFL::award('test-metric-prog-1')->to($user)->amount(60)->save();
         LFL::award('test-metric-prog-2')->to($user)->amount(60)->save();
 
         $service = app(MetricLevelGroupService::class);
-        $profileMetricGroup = $service->getOrCreateProfileMetricGroup($profile, $group);
-        $result = $service->checkProgression($profileMetricGroup);
 
-        $profileMetricGroup->refresh();
+        // Verify the ProfileMetricGroup was created and level was updated automatically
+        $profileMetricGroup = ProfileMetricGroup::where('profile_id', $profile->id)
+            ->where('metric_level_group_id', $group->id)
+            ->first();
 
-        expect($result['level_reached'])->toBeTrue()
-            ->and($result['new_level'])->toBe(2)
-            ->and($profileMetricGroup->current_level)->toBe(2);
+        // Verify XP totals
+        $totalXp = $service->getTotalXp($user, $group);
+
+        expect($profileMetricGroup)->not->toBeNull('ProfileMetricGroup should be created automatically')
+            ->and($profileMetricGroup->current_level)->toBe(2, 'Level should be automatically updated to 2')
+            ->and($totalXp)->toBe(120, 'Total XP should be 120');
     });
 
     it('uses stored current_level in getCurrentLevel', function () {
@@ -218,12 +222,12 @@ describe('MetricLevelGroupService with ProfileMetricGroup', function () {
         ]);
 
         // Add metrics to group
-        LFL::setup(a: 'group-metric', group: 'test-current-group', metric: 'test-metric-current-1', weight: 1.0);
-        LFL::setup(a: 'group-metric', group: 'test-current-group', metric: 'test-metric-current-2', weight: 1.0);
+        LFL::setup(a: 'metric-level-group-metric', with: ['group' => 'test-current-group', 'metric' => 'test-metric-current-1', 'weight' => 1.0]);
+        LFL::setup(a: 'metric-level-group-metric', with: ['group' => 'test-current-group', 'metric' => 'test-metric-current-2', 'weight' => 1.0]);
 
         // Create levels
-        LFL::setup(a: 'group-level', group: 'test-current-group', level: 1, xp: 0, name: 'Level 1');
-        LFL::setup(a: 'group-level', group: 'test-current-group', level: 2, xp: 100, name: 'Level 2');
+        LFL::setup(a: 'metric-level-group-level', with: ['group' => 'test-current-group', 'level' => 1, 'xp' => 0, 'name' => 'Level 1']);
+        LFL::setup(a: 'metric-level-group-level', with: ['group' => 'test-current-group', 'level' => 2, 'xp' => 100, 'name' => 'Level 2']);
 
         // Create ProfileMetricGroup with stored level
         $profileMetricGroup = ProfileMetricGroup::create([
@@ -262,12 +266,12 @@ describe('MetricLevelGroupService with ProfileMetricGroup', function () {
         ]);
 
         // Add metrics to group
-        LFL::setup(a: 'group-metric', group: 'test-auto-group', metric: 'test-auto-metric-1', weight: 1.0);
-        LFL::setup(a: 'group-metric', group: 'test-auto-group', metric: 'test-auto-metric-2', weight: 1.0);
+        LFL::setup(a: 'metric-level-group-metric', with: ['group' => 'test-auto-group', 'metric' => 'test-auto-metric-1', 'weight' => 1.0]);
+        LFL::setup(a: 'metric-level-group-metric', with: ['group' => 'test-auto-group', 'metric' => 'test-auto-metric-2', 'weight' => 1.0]);
 
         // Create levels
-        LFL::setup(a: 'group-level', group: 'test-auto-group', level: 1, xp: 0, name: 'Level 1');
-        LFL::setup(a: 'group-level', group: 'test-auto-group', level: 2, xp: 150, name: 'Level 2');
+        LFL::setup(a: 'metric-level-group-level', with: ['group' => 'test-auto-group', 'level' => 1, 'xp' => 0, 'name' => 'Level 1']);
+        LFL::setup(a: 'metric-level-group-level', with: ['group' => 'test-auto-group', 'level' => 2, 'xp' => 150, 'name' => 'Level 2']);
 
         // Award XP - this should trigger group progression check
         LFL::award('test-auto-metric-1')->to($user)->amount(80)->save();

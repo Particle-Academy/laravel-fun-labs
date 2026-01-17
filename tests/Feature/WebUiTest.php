@@ -142,10 +142,12 @@ describe('Web UI Routes', function () {
             // Create a GamedMetric using LFL::setup()
             LFL::setup(
                 a: 'gamed-metric',
-                slug: 'general-xp',
-                name: 'General XP',
-                description: 'General experience points',
-                active: true
+                with: [
+                    'slug' => 'general-xp',
+                    'name' => 'General XP',
+                    'description' => 'General experience points',
+                    'active' => true,
+                ]
             );
 
             $user = User::create(['name' => 'User', 'email' => 'user@example.com']);

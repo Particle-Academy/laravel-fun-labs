@@ -28,47 +28,13 @@ interface AwardEngineContract
      * Set up a new entity dynamically at runtime.
      *
      * Creates GamedMetrics, MetricLevels, MetricLevelGroups, Achievements, or Prizes.
+     * Uses upsert logic to create new entities or update existing ones by slug.
      *
-     * @param  string|null  $a  Entity type: 'gamed-metric', 'metric-level', 'metric-level-group', 'achievement', 'prize'
-     * @param  string|null  $an  Achievement name/slug (shorthand for a:'achievement')
-     * @param  string|null  $slug  Entity slug identifier
-     * @param  string|null  $name  Human-readable display name
-     * @param  string|null  $description  Entity description
-     * @param  string|null  $icon  Icon identifier for UI display
-     * @param  string|null  $for  Awardable type restriction (achievements only)
-     * @param  string|null  $metric  GamedMetric slug (for metric-level)
-     * @param  string|null  $group  MetricLevelGroup slug (for group operations)
-     * @param  int|null  $level  Level number
-     * @param  int|null  $xp  XP threshold
-     * @param  float|null  $weight  Weight in group
-     * @param  string|null  $type  Prize type
-     * @param  int|float|null  $cost  Cost in points (for prizes)
-     * @param  int|null  $inventory  Inventory quantity (for prizes)
-     * @param  array<string, mixed>  $metadata  Flexible JSON metadata
-     * @param  bool  $active  Whether the entity is active
-     * @param  int  $order  Sort order for display
+     * @param  string  $a  Entity type: 'gamed-metric', 'metric-level', 'metric-level-group', 'metric-level-group-level', 'achievement', 'prize'
+     * @param  array<string, mixed>  $with  Configuration array with entity-specific fields
      * @return Model The created or updated entity instance
      */
-    public function setup(
-        ?string $a = null,
-        ?string $an = null,
-        ?string $slug = null,
-        ?string $name = null,
-        ?string $description = null,
-        ?string $icon = null,
-        ?string $for = null,
-        ?string $metric = null,
-        ?string $group = null,
-        ?int $level = null,
-        ?int $xp = null,
-        ?float $weight = null,
-        ?string $type = null,
-        int|float|null $cost = null,
-        ?int $inventory = null,
-        array $metadata = [],
-        bool $active = true,
-        int $order = 0,
-    ): Model;
+    public function setup(string $a, array $with = []): Model;
 
     /**
      * Award XP to a GamedMetric for an awardable entity.
