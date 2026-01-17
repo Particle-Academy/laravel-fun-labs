@@ -135,17 +135,13 @@ GamedMetrics are independent XP categories. Each metric tracks its own XP and ca
 use LaravelFunLab\Facades\LFL;
 
 // Create via setup()
-LFL::setup(
-    a: 'gamed-metric',
-    slug: 'combat-xp',
-    name: 'Combat XP',
-    description: 'Experience from combat activities'
-);
+LFL::setup(a: 'gamed-metric', with: [
+    'slug' => 'combat-xp',
+    'name' => 'Combat XP',
+    'description' => 'Experience from combat activities',
+]);
 
-// Or create directly via model
-use LaravelFunLab\Models\GamedMetric;
-
-GamedMetric::create([
+LFL::setup(a: 'gamed-metric', with: [
     'slug' => 'crafting-xp',
     'name' => 'Crafting XP',
     'description' => 'Experience from crafting items',
@@ -159,7 +155,10 @@ GamedMetric::create([
 use LaravelFunLab\Facades\LFL;
 
 // Award XP to a specific GamedMetric
-$profileMetric = LFL::awardGamedMetric($user, 'combat-xp', 50);
+$profileMetric = LFL::award('combat-xp')
+    ->to($user)
+    ->amount(50)
+    ->save();
 
 // Check the result
 echo $profileMetric->total_xp; // XP for this specific metric
@@ -189,30 +188,30 @@ $metrics = $profile->metrics; // Collection of ProfileMetric
 
 ### Level Progression
 
-Define levels for GamedMetrics using MetricLevels:
+Define levels for GamedMetrics using LFL::setup():
 
 ```php
-use LaravelFunLab\Models\MetricLevel;
+use LaravelFunLab\Facades\LFL;
 
 // Create levels for a GamedMetric
-MetricLevel::create([
-    'gamed_metric_id' => $combatMetric->id,
+LFL::setup(a: 'metric-level', with: [
+    'metric' => 'combat-xp',
     'level' => 1,
-    'xp_required' => 0,
+    'xp' => 0,
     'name' => 'Novice',
 ]);
 
-MetricLevel::create([
-    'gamed_metric_id' => $combatMetric->id,
+LFL::setup(a: 'metric-level', with: [
+    'metric' => 'combat-xp',
     'level' => 2,
-    'xp_required' => 100,
+    'xp' => 100,
     'name' => 'Apprentice',
 ]);
 
-MetricLevel::create([
-    'gamed_metric_id' => $combatMetric->id,
+LFL::setup(a: 'metric-level', with: [
+    'metric' => 'combat-xp',
     'level' => 3,
-    'xp_required' => 500,
+    'xp' => 500,
     'name' => 'Journeyman',
 ]);
 ```
@@ -227,10 +226,9 @@ MetricLevelGroups allow you to combine multiple GamedMetrics with weights to cre
 
 ```php
 use LaravelFunLab\Facades\LFL;
-use LaravelFunLab\Models\MetricLevelGroup;
 
 // Create a group
-$group = MetricLevelGroup::create([
+LFL::setup(a: 'metric-level-group', with: [
     'slug' => 'total-player-level',
     'name' => 'Total Player Level',
     'description' => 'Combined level from all activities',
@@ -350,6 +348,7 @@ The ProfileMetricGroup model stores the current level persistently:
 
 ```php
 use LaravelFunLab\Models\ProfileMetricGroup;
+use LaravelFunLab\Models\MetricLevelGroup;
 
 $profile = $user->getProfile();
 $group = MetricLevelGroup::findBySlug('total-player-level');
@@ -391,23 +390,20 @@ $level->achievements()->attach($achievement->id);
 use LaravelFunLab\Facades\LFL;
 
 // Via setup()
-$achievement = LFL::setup(
-    an: 'first-login',
-    for: 'User', // Optional: restrict to specific model type
-    name: 'First Login',
-    description: 'Welcome! You\'ve logged in for the first time.',
-    icon: 'star'
-);
+LFL::setup(a: 'achievement', with: [
+    'slug' => 'first-login',
+    'for' => 'User', // Optional: restrict to specific model type
+    'name' => 'First Login',
+    'description' => 'Welcome! You\'ve logged in for the first time.',
+    'icon' => 'star',
+]);
 
-// Or directly via model
-use LaravelFunLab\Models\Achievement;
-
-Achievement::create([
+LFL::setup(a: 'achievement', with: [
     'slug' => 'task-master',
     'name' => 'Task Master',
     'description' => 'Complete 100 tasks',
     'icon' => 'trophy',
-    'is_active' => true,
+    'active' => true,
 ]);
 ```
 
@@ -417,7 +413,11 @@ Achievement::create([
 use LaravelFunLab\Facades\LFL;
 
 // Grant an achievement
-$result = LFL::grantAchievement($user, 'first-login', 'completed first login', 'auth');
+$result = LFL::grant('first-login')
+    ->to($user)
+    ->because('completed first login')
+    ->from('auth')
+    ->save();
 
 if ($result->succeeded()) {
     echo "Achievement unlocked!";
@@ -432,12 +432,11 @@ if ($user->hasAchievement('first-login')) {
 ### Fluent API for Achievements
 
 ```php
-$result = LFL::award('achievement')
+$result = LFL::grant('first-login')
     ->to($user)
-    ->achievement('first-login')
-    ->for('completed first login')
+    ->because('completed first login')
     ->from('auth-system')
-    ->grant();
+    ->save();
 ```
 
 ## Prizes
@@ -445,22 +444,21 @@ $result = LFL::award('achievement')
 ### Creating Prizes
 
 ```php
-use LaravelFunLab\Models\Prize;
-use LaravelFunLab\Enums\PrizeType;
+use LaravelFunLab\Facades\LFL;
 
-Prize::create([
+LFL::setup(a: 'prize', with: [
     'slug' => 'premium-month',
     'name' => '1 Month Premium Access',
     'description' => 'One month of premium features',
-    'type' => PrizeType::Virtual,
-    'meta' => ['duration_days' => 30],
+    'type' => 'virtual',
+    'metadata' => ['duration_days' => 30],
 ]);
 
-Prize::create([
+LFL::setup(a: 'prize', with: [
     'slug' => 'tshirt',
     'name' => 'LFL T-Shirt',
     'description' => 'Exclusive branded t-shirt',
-    'type' => PrizeType::Physical,
+    'type' => 'physical',
 ]);
 ```
 
@@ -469,12 +467,11 @@ Prize::create([
 ```php
 use LaravelFunLab\Facades\LFL;
 
-$result = LFL::award('prize')
+$result = LFL::grant('premium-month')
     ->to($user)
-    ->for('won monthly contest')
+    ->because('won monthly contest')
     ->from('contest-system')
-    ->withMeta(['prize_slug' => 'premium-month'])
-    ->grant();
+    ->save();
 
 if ($result->succeeded()) {
     echo "Prize awarded!";
@@ -608,7 +605,10 @@ class TaskController extends Controller
             default => 10,
         };
         
-        LFL::awardGamedMetric(auth()->user(), 'task-xp', $xp);
+        LFL::award('task-xp')
+            ->to(auth()->user())
+            ->amount($xp)
+            ->save();
         
         return back()->with('success', "Task completed! +{$xp} XP");
     }
@@ -628,7 +628,11 @@ class LoginController extends Controller
         
         // Grant first-login achievement if not already granted
         if (!$user->hasAchievement('first-login')) {
-            LFL::grantAchievement($user, 'first-login', 'First successful login', 'auth');
+            LFL::grant('first-login')
+                ->to($user)
+                ->because('First successful login')
+                ->from('auth')
+                ->save();
         }
         
         return redirect()->intended();
@@ -651,7 +655,10 @@ class DailyBonusService
         }
         
         // Award daily bonus XP
-        LFL::awardGamedMetric($user, 'daily-xp', 10);
+        LFL::award('daily-xp')
+            ->to($user)
+            ->amount(10)
+            ->save();
     }
 }
 ```
@@ -663,15 +670,23 @@ class DailyBonusService
 Event::listen(OrderCompleted::class, function ($event) {
     $xp = (int) ($event->order->total / 10); // 1 XP per $10 spent
     
-    LFL::awardGamedMetric($event->order->user, 'shopping-xp', $xp);
+    LFL::award('shopping-xp')
+        ->to($event->order->user)
+        ->amount($xp)
+        ->save();
 });
 
 Event::listen(ReviewSubmitted::class, function ($event) {
-    LFL::awardGamedMetric($event->review->user, 'community-xp', 5);
+    LFL::award('community-xp')
+        ->to($event->review->user)
+        ->amount(5)
+        ->save();
     
     // Grant achievement for first review
     if (!$event->review->user->hasAchievement('first-review')) {
-        LFL::grantAchievement($event->review->user, 'first-review');
+        LFL::grant('first-review')
+            ->to($event->review->user)
+            ->save();
     }
 });
 ```
