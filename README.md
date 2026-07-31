@@ -4,6 +4,7 @@
 
 [![Powered by Tynn](https://img.shields.io/endpoint?url=https%3A%2F%2Ftynn.ai%2Fo%2Fparticle-academy%2Flaravel-fun-lab%2Fbadge.json)](https://tynn.ai/o/particle-academy/laravel-fun-lab)
 [![Latest Version](https://img.shields.io/packagist/v/particle-academy/laravel-fun-lab.svg?style=flat-square)](https://packagist.org/packages/particle-academy/laravel-fun-lab)
+[![Total Downloads](http://poser.pugx.org/particle-academy/laravel-fun-lab/downloads?style=flat-square)](https://packagist.org/packages/particle-academy/laravel-fun-lab)
 [![License](https://img.shields.io/packagist/l/particle-academy/laravel-fun-lab.svg?style=flat-square)](https://packagist.org/packages/particle-academy/laravel-fun-lab)
 [![Laravel](https://img.shields.io/badge/Laravel-11.x%20%7C%2012.x-red.svg?style=flat-square)](https://laravel.com)
 
