@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 0.5.0 — 2026-06-05
+
+### Added
+
+- hidden ("secret") achievements
+
+## 0.4.2 — 2026-05-27
+
+- Maintenance only (1 internal commit).
+
+## 0.4.1 — 2026-05-27
+
+### Changed
+
+- Rename package: particleacademy/laravel-fun-lab -> particle-academy/laravel-fun-lab
+
 ### Changed
 
 - Package renamed on Packagist from `particleacademy/laravel-fun-lab` to `particle-academy/laravel-fun-lab` to match the `particle-academy/*` namespace convention.
